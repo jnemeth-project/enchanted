@@ -17,10 +17,10 @@ export const COLOURS = [
   { c: new THREE.Color(0.95, 0.96, 1.0), hz: 329.63 },  // moon white
 ];
 
-// A gentle arc in front of you, at seated reach (player faces -Z): rows x columns, slightly staggered.
+// A gentle arc in front of you, raised a little above the eyes so the fireflies glow against the dark trunks (player faces -Z): rows x columns, slightly staggered.
 function arcSlots(n) {
   const rows = n > 12 ? 3 : 2, cols = Math.ceil(n / rows);
-  const span = n > 24 ? 124 : n > 12 ? 104 : n > 6 ? 80 : 64, R = n > 12 ? 0.56 : 0.52, ys = rows === 3 ? [0.86, 1.04, 1.22] : [0.94, 1.12];
+  const span = n > 24 ? 124 : n > 12 ? 104 : n > 6 ? 80 : 64, R = n > 12 ? 0.56 : 0.52, ys = rows === 3 ? [1.3, 1.48, 1.66] : [1.36, 1.56]; // above eye level: against the dark tree line, not the glowing mushrooms
   const out = [];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols && out.length < n; c++) {
     const a = THREE.MathUtils.degToRad(-span / 2 + span * (c + (r % 2 ? 0.5 : 0.25)) / cols);

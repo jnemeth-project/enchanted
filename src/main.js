@@ -185,7 +185,7 @@ function ahead(dist = 1.25, up = 0.16) {
 }
 // on-screen words, always placed where you are looking
 function viewQuat() { const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera; const q = new THREE.Quaternion(); cam.getWorldQuaternion(q); return q; }
-function say(text, { width = 1.1, hold = 3.4, at = null } = {}) { return captions.show(text, at || ahead(), { width, hold }); }
+function say(text, { width = 1.1, hold = 3.4, at = null } = {}) { return captions.show(text, at || (flies.active ? ahead(1.25, -0.32) : ahead()), { width, hold }); } // under the fireflies while they play
 
 // ---------------------------------------------------------------- the night
 function updatePhases(dt) {
@@ -214,7 +214,7 @@ function updatePhases(dt) {
         say('Boop two fireflies\nthat share a colour', { hold: 4 });
         guide.tap(a.g.position.clone(), () => {
           flies.boop(a);
-          guide.tap(b.g.position.clone(), () => { flies.boop(b); state.memoryShown = true; saveState(state); guide.twirl(() => guide.goTo(new THREE.Vector3(-0.5, 1.42, -0.8), { orbit: 0.05, speed: 0.9 })); });
+          guide.tap(b.g.position.clone(), () => { flies.boop(b); state.memoryShown = true; saveState(state); guide.twirl(() => guide.goTo(new THREE.Vector3(-0.8, 1.02, -0.8), { orbit: 0.05, speed: 0.9 })); });
         });
       }
     }
@@ -283,7 +283,7 @@ function startMode(mode) {
 
 function onPairFound() {
   // your first pair (after the butterfly's): a little twirl of joy
-  if (flies.matched === 2 && !phase.praised) { phase.praised = true; if (guide.mode === 'hover') guide.twirl(() => guide.goTo(new THREE.Vector3(-0.5, 1.42, -0.8), { orbit: 0.05, speed: 0.9 })); }
+  if (flies.matched === 2 && !phase.praised) { phase.praised = true; if (guide.mode === 'hover') guide.twirl(() => guide.goTo(new THREE.Vector3(-0.8, 1.02, -0.8), { orbit: 0.05, speed: 0.9 })); }
   if (flies.pairs > 5 && flies.matched === flies.pairs - 1) say('One pair left', { hold: 2 });
 }
 
