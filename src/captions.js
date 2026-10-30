@@ -3,12 +3,16 @@ import * as THREE from 'three';
 import { tweens } from './util.js';
 
 function textTexture(lines) {
-  const W = 1024, H = 256 * lines.length, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const W = 2048, H = 256 * lines.length, c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d');
   g.textAlign = 'center'; g.textBaseline = 'middle';
+  const face = '"Iowan Old Style", "Palatino Linotype", Georgia, serif';
+  // every line shrinks to fit, so long instructions are never cut off at the edges
+  const fit = (line, size) => { g.font = `${size}px ${face}`; const w = g.measureText(line).width; return w > W - 120 ? Math.floor(size * (W - 120) / w) : size; };
   lines.forEach((line, i) => {
     const big = i === 0, y = 128 + i * 210;
-    g.font = `${big ? 132 : 96}px "Iowan Old Style", "Palatino Linotype", Georgia, serif`;
+    const size = fit(line, big ? 132 : 104);
+    g.font = `${size}px ${face}`;
     g.shadowColor = 'rgba(190, 200, 255, 0.85)'; g.shadowBlur = 36;
     g.fillStyle = big ? 'rgba(244, 240, 255, 0.96)' : 'rgba(214, 226, 255, 0.85)';
     g.fillText(line, W / 2, y); g.shadowBlur = 12; g.fillText(line, W / 2, y);
@@ -23,7 +27,7 @@ export class Captions {
   show(text, position, { width = 0.3, fadeIn = 1.2, hold = 2.8, fadeOut = 1.8, rise = 0.04 } = {}) {
     for (const old of this.live) tweens.add(0.6, (k) => { old.material.opacity = old.userData.o * (1 - k); }, { done: () => this._remove(old) });
     const { t, aspect } = textTexture(String(text).split('\n'));
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false }));
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
     s.renderOrder = 30; s.scale.set(width, width / aspect, 1); s.position.copy(position);
     this.scene.add(s); this.live = [s];
     const y0 = position.y;

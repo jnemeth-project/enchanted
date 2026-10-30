@@ -41,14 +41,11 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
 renderer.xr.setFoveation(1);
-// Filmic tone mapping: deeper darks and glows that roll off softly instead of washing out
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.25;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05040b);
-scene.fog = new THREE.FogExp2(0x080611, 0.015);
+scene.fog = new THREE.FogExp2(0x0b0816, 0.018);
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.03, 400);
 const rig = new THREE.Group(); scene.add(rig); rig.add(camera);
 camera.position.copy(EYE);
@@ -96,7 +93,7 @@ async function init() {
   phase.firstNight = state.collection.length === 0 && state.nights === 1;
   seed.multiGrow = phase.firstNight; // first night: every watering grows it, so you keep a bloom on night one
   seed.onPlace = (at) => {
-    captions.show('yours to keep', at.clone().add(new THREE.Vector3(0, 0.5, 0)), { width: 0.28, hold: 2.4 });
+    captions.show('yours to keep', at.clone().add(new THREE.Vector3(0, 0.5, 0)), { width: 0.56, hold: 2.4 });
     if (phase.mode === 'fireflies' && phase.firstNight) tweens.add(0.1, () => {}, { delay: 3, done: goodnight });
   };
   seed.onGrow = onGrow;
@@ -126,7 +123,7 @@ function begin() {
     phase.saved = { stage: state.stage, color: state.color };
     seed.demo = true; state.stage = 0; seed.show(0, false);
     flies.fast = true; rain.catchRate = 0.35;
-  } else tweens.add(0.1, () => {}, { delay: 1.2, done: () => say(`Night ${state.nights}`, { width: 0.6, hold: 2.6 }) });
+  } else tweens.add(0.1, () => {}, { delay: 1.2, done: () => say(`Night ${state.nights}`, { width: 1.2, hold: 2.6 }) });
 }
 
 function readOptions() {
@@ -171,7 +168,7 @@ function ahead(dist = 1.25, up = 0.16) {
   return o.addScaledVector(f, dist).addScaledVector(u, up);
 }
 // on-screen words, always placed where you are looking
-function say(text, { width = 0.56, hold = 3.4, at = null } = {}) { return captions.show(text, at || ahead(), { width, hold }); }
+function say(text, { width = 1.1, hold = 3.4, at = null } = {}) { return captions.show(text, at || ahead(), { width, hold }); }
 
 // ---------------------------------------------------------------- the night
 function updatePhases(dt) {
@@ -199,7 +196,7 @@ function updatePhases(dt) {
     }
   } else if (P === 'rain') {
     phase.rainT += dt;
-    if (phase.tellPour === undefined && rain.held > 0.4) { phase.tellPour = true; say('Now tip your hands\nover the pot', { at: abovePot().add(new THREE.Vector3(0, 0.12, 0)), width: 0.42 }); }
+    if (phase.tellPour === undefined && rain.held > 0.4) { phase.tellPour = true; say('Now tip your hands\nover the pot', { at: abovePot().add(new THREE.Vector3(0, 0.12, 0)), width: 0.84 }); }
     // the butterfly shows it too, if no one has caught any rain yet
     if (!phase.rainShown && phase.rainT > (TUTORIAL ? 7 : 10) && rain.held < 0.1 && needsWater()) { phase.rainShown = true; showRainDemo(); }
     if (!TUTORIAL) {
@@ -275,14 +272,14 @@ function startRain() {
 function onGrow(stage) {
   if (TUTORIAL) {
     // tutorial: one watering shows the whole life of the mushroom, quickly
-    captions.show(GROW_WORDS[stage], abovePot(), { width: 0.26, hold: 1.2, fadeIn: 0.6, fadeOut: 0.8 });
+    captions.show(GROW_WORDS[stage], abovePot(), { width: 0.52, hold: 1.2, fadeIn: 0.6, fadeOut: 0.8 });
     if (stage < 3) { tweens.add(0.1, () => {}, { delay: 1.7, done: () => seed.grow() }); return; }
     tweens.add(0.1, () => {}, { delay: 3, done: () => say('Water it each night\nand watch it grow', { hold: 3 }) });
     tweens.add(0.1, () => {}, { delay: 8, done: finishTutorial });
     return;
   }
   if (phase.firstNight && stage === 3 && !phase.carryScheduled) { phase.carryScheduled = true; scheduleCarry(); }
-  captions.show(GROW_WORDS[stage], abovePot(), { width: 0.26 });
+  captions.show(GROW_WORDS[stage], abovePot(), { width: 0.52 });
   seed.invite = phase.firstNight && stage < 3;
   guide.goTo(seed.target.clone().add(new THREE.Vector3(0, 0.3, 0)), { orbit: 0.12, speed: 0.9 });
 }
@@ -317,7 +314,7 @@ function goodnight() {
 
 // After the butterfly has gone, say clearly that the night is over.
 function nightComplete() {
-  say('Goodnight', { width: 0.5, hold: 3 });
+  say('Goodnight', { width: 1.0, hold: 3 });
   tweens.add(0.1, () => {}, { delay: 6, done: () => say('Come back tomorrow night\nto see what grows', { hold: 4.5 }) });
 }
 

@@ -32,7 +32,7 @@ export class Choice {
       const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
       core.scale.setScalar(0.06); core.position.copy(at);
       const { t, aspect } = label(o.title, o.sub);
-      const text = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+      const text = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, opacity: 0, depthWrite: false }));
       const w = 0.3; text.scale.set(w, w / aspect, 1); text.position.copy(at).add(new THREE.Vector3(0, -0.1, 0));
       halo.renderOrder = core.renderOrder = 25; text.renderOrder = 26;
       this.group.add(halo, core, text);
