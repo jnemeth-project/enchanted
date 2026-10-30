@@ -161,7 +161,7 @@ export class Seed {
     this.scene.add(o);
     const p = this.palette[c.color];
     this.collection.push({ o, mats, color: c.color, aurora: p && p.name === 'Aurora' });
-    if (this.touch) this.touch.addBoop(o, 92, { keep: true });
+    if (this.touch) this.touch.addBoop(o, this.touch.constructor.note(this.touch.nextNote++ || 0), { keep: true });
     if (animate) { this.effects.sparkle(o.position, col.getHex(), 30, 0.2); const s = o.scale.clone(); o.scale.setScalar(0.6); tweens.add(0.6, (k) => o.scale.copy(s).multiplyScalar(0.6 + 0.4 * k)); }
   }
 }

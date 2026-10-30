@@ -165,7 +165,44 @@ export async function loadWorld(scene, onProgress) {
   applyMoonLight(W, moonPhase());
 
   W.nodes = nodes;
+  W.canopy = canopyOpener([get('Trees'), ...nodes.filter((o) => /^CanopyFill/.test(o.name))].filter(Boolean));
   return W;
+}
+
+// Stargazing: the canopy overhead opens. Leaves inside a widening circle around the zenith dissolve
+// away with a soft, ragged edge, and the nearest trunks lean gently apart. One uniform; free while closed.
+function canopyOpener(objs) {
+  const u = { value: 0 };
+  const done = new Set();
+  for (const root of objs) root.traverse((m) => {
+    if (!m.isMesh) return;
+    for (const mat of [].concat(m.material)) {
+      if (done.has(mat)) continue; done.add(mat);
+      const leafy = /Leaves|Canopy/i.test(mat.name || '') || mat.alphaTest > 0 || mat.transparent;
+      mat.onBeforeCompile = (sh) => {
+        sh.uniforms.canopyOpen = u;
+        sh.vertexShader = 'uniform float canopyOpen;\nvarying vec3 vOpenW;\n' + sh.vertexShader.replace('#include <project_vertex>', `
+          vec4 wp = modelMatrix * vec4(transformed, 1.0);
+          float rr = length(wp.xz);
+          float lean = smoothstep(1.5, 6.0, wp.y) * smoothstep(6.0, 1.5, rr);
+          wp.xz += (wp.xz / max(rr, 0.001)) * canopyOpen * lean * 1.2;
+          vOpenW = wp.xyz;
+          vec4 mvPosition = viewMatrix * wp;
+          gl_Position = projectionMatrix * mvPosition;`);
+        if (leafy) {
+          sh.fragmentShader = 'uniform float canopyOpen;\nvarying vec3 vOpenW;\n' + sh.fragmentShader.replace('void main() {', `void main() {
+            if (canopyOpen > 0.001) {
+              vec3 d = vOpenW - vec3(0.0, 1.2, 0.0);
+              float t = length(d.xz) / max(d.y, 0.3);               // tan of the angle from straight up
+              float ragged = 0.18 * sin(atan(d.z, d.x) * 7.0 + d.y) + 0.12 * sin(vOpenW.x * 3.1 + vOpenW.z * 2.7);
+              if (t < canopyOpen * 1.45 + ragged * canopyOpen) discard;
+            }`);
+        } else sh.fragmentShader = 'varying vec3 vOpenW;\n' + sh.fragmentShader;
+      };
+      mat.needsUpdate = true;
+    }
+  });
+  return { uniform: u, set(k) { u.value = k; } };
 }
 
 export function placeMoon(W, p) {

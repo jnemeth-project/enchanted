@@ -20,6 +20,7 @@
   button:hover:not(:disabled) { background: rgba(143,245,212,0.16); border-color: rgba(143,245,212,0.6); }
   button:disabled { opacity: 0.4; cursor: default; }
   button.quiet { background: transparent; border-color: rgba(255,255,255,0.18); }
+  button.small { font-size: 0.9rem; padding: 0.55rem 1.2rem; display: block; margin: 0.6rem auto 0; }
   .opts { display: grid; gap: 0.55rem; text-align: left; margin: 1.6rem auto 0; max-width: 21rem; font-size: 0.95rem; color: var(--soft); }
   .opts label { display: flex; align-items: center; gap: 0.7rem; cursor: pointer; line-height: 1.35; }
   .opts input[type=checkbox] { width: 1.15rem; height: 1.15rem; accent-color: #8ff5d4; flex: none; }
@@ -45,10 +46,11 @@
   <div id="status">Gathering the forest…</div>
   <button id="enter-vr" disabled>Enter the forest</button>
   <button id="enter-screen" class="quiet" disabled>Look around on this screen</button>
+  <button id="how-to" class="quiet small">Show me how to play</button>
   <div class="opts" role="group" aria-label="Options">
     <label><input type="checkbox" id="opt-look"><span>Look to select<small>No hands needed: look at something until its ring fills</small></span></label>
     <label><input type="checkbox" id="opt-sit"><span>Just sit<small>No tasks: the forest falls asleep on its own</small></span></label>
-    <label><input type="checkbox" id="opt-bright"><span>Brighter glow<small>Larger glowdrops and brighter things to touch</small></span></label>
+    <label><input type="checkbox" id="opt-bright"><span>Brighter glow<small>Larger fireflies and brighter things to touch</small></span></label>
     <div class="vol"><span>Volume</span><input type="range" id="opt-volume" min="0" max="1" step="0.05" value="0.8" aria-label="Volume"></div>
   </div>
   <div class="foot">Best with headphones. Everything works with one hand.</div>

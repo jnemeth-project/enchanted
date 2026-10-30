@@ -7,7 +7,7 @@ const N = 900, R = 7, TOP = 9;
 export class Rain {
   constructor(scene, sound, effects, seed) {
     this.scene = scene; this.sound = sound; this.effects = effects; this.seed = seed;
-    this.level = 0; this.target = 0; this.time = 0;
+    this.level = 0; this.target = 0; this.time = 0; this.catchRate = 0.12; this.onPour = null;
     const pos = new Float32Array(N * 6);
     this.drops = [];
     for (let i = 0; i < N; i++) this.drops.push(this._respawn({}, true));
@@ -31,6 +31,8 @@ export class Rain {
   }
 
   start() { this.target = 1; this.lines.visible = true; }
+  // how much rain the fullest hand is holding (0..1)
+  get held() { return Math.max(this.palms[0].water, this.palms[1].water); }
   stop() { this.target = 0; }
   get active() { return this.level > 0.05; }
 
@@ -56,7 +58,7 @@ export class Rain {
       if (!h.present) { P.mesh.visible = false; if (P.stop) { P.stop(); P.stop = null; } return; }
       const up = h.palmNormal.y;
       if (this.level > 0.3 && up > 0.55) {
-        P.water = Math.min(1, P.water + dt * 0.12 * this.level);
+        P.water = Math.min(1, P.water + dt * this.catchRate * this.level);
         P.dripT -= dt; if (P.dripT <= 0) { P.dripT = rand(0.25, 0.6); this.sound.drip(h.palm); }
       }
       const pouring = P.water > 0.03 && up < 0.2;
@@ -67,7 +69,7 @@ export class Rain {
         if (!P.stop) P.stop = this.sound.trickle(lip);
         const tgt = this.seed.target;
         const horiz = Math.hypot(lip.x - tgt.x, lip.z - tgt.z);
-        if (horiz < 0.22 && lip.y > tgt.y - 0.02) this.seed.receiveWater(flow * 1.6);
+        if (horiz < 0.22 && lip.y > tgt.y - 0.02) { this.seed.receiveWater(flow * 1.6); if (this.onPour) this.onPour(); }
       } else if (P.stop) { P.stop(); P.stop = null; }
       P.mesh.visible = P.water > 0.02;
       if (P.mesh.visible) {
@@ -88,7 +90,7 @@ export class Rain {
       const from = tgt.clone().add(new THREE.Vector3(0, 0.6, 0));
       for (let i = 0; i < 12; i++) setTimeout(() => this.effects.water(from, new THREE.Vector3()), i * 120);
       const stop = this.sound.trickle(tgt); setTimeout(stop, 1600);
-      setTimeout(() => this.seed.receiveWater(1), 1200);
+      setTimeout(() => { this.seed.receiveWater(1); if (this.onPour) this.onPour(); }, 1200);
     } };
   }
 }

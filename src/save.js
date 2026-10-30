@@ -9,7 +9,7 @@ export function nightKey(d = new Date()) {
 }
 
 export function defaultState() {
-  return { version: 1, nights: 0, lastNight: null, stage: 0, color: null, wateredNight: null, collection: [] };
+  return { version: 1, nights: 0, lastNight: null, stage: 0, color: null, wateredNight: null, collection: [], tutorialDone: false };
 }
 
 export function loadState(storage = globalThis.localStorage) {

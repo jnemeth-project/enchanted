@@ -44,10 +44,12 @@ export class Sleep {
     g.sleeping = true;
     g.clusters.forEach((c, i) => {
       const base = c.scale.y;
+      if (c.userData.sy === undefined) c.userData.sy = base;
       tweens.add(4.5, (k) => { setEmissiveScale(c.userData.mats, 1 - 0.86 * k); c.scale.y = base * (1 - 0.05 * k); }, { delay: i * 0.35 });
     });
     for (const d of g.dust) {
-      const y0 = d.position.y;
+      if (d.userData.y0 === undefined) d.userData.y0 = d.position.y;
+      const y0 = d.userData.y0;
       d.userData.twirlScale = 1;
       tweens.add(6, (k) => { setEmissiveScale(d.userData.mats, 1 - k); d.position.y = y0 - 0.45 * k; d.userData.twirlScale = 1 - 0.85 * k; }, { delay: 0.6, done: () => { d.visible = false; } });
     }
@@ -55,6 +57,17 @@ export class Sleep {
     tweens.add(1, () => {}, { delay: 4.5, done: () => { g.asleep = true; g.sleeping = false; } });
     this.asleepCount++;
     this.progress = this.asleepCount / this.groups.length;
+  }
+
+  // the forest wakes again (after the tutorial, before your own night begins)
+  wakeAll(dur = 3) {
+    for (const g of this.groups) {
+      for (const c of g.clusters) tweens.add(dur, (k) => { setEmissiveScale(c.userData.mats, 0.14 + 0.86 * k); if (c.userData.sy !== undefined) c.scale.y = c.userData.sy; });
+      for (const d of g.dust) { d.visible = true; d.userData.twirlScale = 1; if (d.userData.y0 !== undefined) d.position.y = d.userData.y0; tweens.add(dur, (k) => setEmissiveScale(d.userData.mats, k)); }
+      for (const r of g.ribbons) { r.visible = true; tweens.add(dur, (k) => setEmissiveScale(r.userData.mats, k)); }
+      g.asleep = false; g.sleeping = false;
+    }
+    this.asleepCount = 0; this.progress = 0;
   }
 
   allAsleep() { return this.asleepCount >= this.groups.length; }

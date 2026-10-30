@@ -68,7 +68,7 @@ export class Sound {
   // Soft, deep boop: sine plus a sub an octave below, gliding down a little.
   boop(pos, baseHz = 105) {
     if (!this.enabled) return;
-    const ctx = this.ctx, t = ctx.currentTime, f = baseHz * (1 + (Math.random() - 0.5) * 0.06);
+    const ctx = this.ctx, t = ctx.currentTime, f = baseHz * (1 + (Math.random() - 0.5) * 0.012); // each mushroom keeps its own note
     const out = this._out(pos);
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.connect(out);
     const g = ctx.createGain(); g.connect(lp); this._env(g, t, 0.03, 0.5, 0.75);
@@ -81,7 +81,25 @@ export class Sound {
     }
   }
 
-  // Wet, low squish for the glowdrops.
+  // A light going out (a firefly or a star): a soft breath of air and a low note that settles down.
+  hush(pos, baseHz = 196) {
+    if (!this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
+    const f = baseHz * (1 + (Math.random() - 0.5) * 0.01);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(1200, t); lp.frequency.exponentialRampToValueAtTime(380, t + 1.2); lp.connect(out);
+    const g = ctx.createGain(); g.connect(lp);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2, t + 0.09); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+    for (const [mult, amp] of [[1, 1], [1.5, 0.25]]) {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f * mult, t); o.frequency.exponentialRampToValueAtTime(f * mult * 0.75, t + 1.2);
+      const a = ctx.createGain(); a.gain.value = amp; o.connect(a); a.connect(g); o.start(t); o.stop(t + 1.6);
+    }
+    const n = this._src(this.white); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 0.7;
+    const ng = ctx.createGain(); ng.gain.setValueAtTime(0.0001, t); ng.gain.exponentialRampToValueAtTime(0.05, t + 0.05); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    n.connect(bp); bp.connect(ng); ng.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.5);
+  }
+
+  // Wet, low squish (no longer used for fireflies).
   squish(pos) {
     if (!this.enabled) return;
     const ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);

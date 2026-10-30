@@ -25,6 +25,8 @@ export class Input {
     this.renderer = renderer; this.rig = rig; this.camera = camera;
     this.hands = [new HandState(0), new HandState(1)];
     this.rayHandlers = []; this.mode = 'desktop';
+    // Far pointing (stargazing): hands then aim with the headset's own hand ray and pinch to select.
+    this.farHands = false; this.aim = [null, null];
     this.handMat = new THREE.MeshBasicMaterial({ color: 0xbfe2ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
     const factory = new XRHandModelFactory();
     this.xrHands = [0, 1].map((i) => {
@@ -38,12 +40,12 @@ export class Input {
       const c = renderer.xr.getController(i); rig.add(c);
       c.addEventListener('connected', (e) => {
         c.userData.source = e.data;
-        if (!e.data.hand && e.data.targetRayMode === 'tracked-pointer') c.add(this._rayLine());
+        if (e.data.targetRayMode === 'tracked-pointer') { const line = this._rayLine(); line.userData.hand = !!e.data.hand; c.userData.line = line; c.add(line); }
       });
       c.addEventListener('disconnected', () => { c.userData.source = null; c.clear(); });
       c.addEventListener('selectstart', () => {
         const src = c.userData.source;
-        if (!src || src.hand) return; // real hands use direct touch instead
+        if (!src || (src.hand && !this.farHands)) return; // real hands use direct touch, except when pointing at the sky
         const o = new THREE.Vector3(), q = new THREE.Quaternion();
         c.getWorldPosition(o); c.getWorldQuaternion(q);
         this.emitRay(new THREE.Ray(o, new THREE.Vector3(0, 0, -1).applyQuaternion(q)));
@@ -53,8 +55,10 @@ export class Input {
   }
 
   _rayLine() {
-    const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1.5)]);
-    return new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xcfe8ff, transparent: true, opacity: 0.35 }));
+    // a soft beam that fades out along its length
+    const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -0.06), new THREE.Vector3(0, 0, -2.5)]);
+    g.setAttribute('color', new THREE.Float32BufferAttribute([0.8, 0.9, 1, 0, 0, 0], 3));
+    return new THREE.Line(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
   }
 
   // each picker returns { key, point, fire } for what the ray points at, or null
@@ -65,6 +69,16 @@ export class Input {
   update(dt) {
     const xr = this.renderer.xr.isPresenting;
     this.mode = xr ? 'xr' : 'desktop';
+    // pointing rays from controllers and (when allowed) hands
+    this.controllers.forEach((c, i) => {
+      const src = c.userData.source, line = c.userData.line;
+      const usable = xr && c.visible && src && src.targetRayMode === 'tracked-pointer' && (!src.hand || this.farHands);
+      if (line) line.visible = !!usable;
+      if (!usable) { this.aim[i] = null; return; }
+      const o = new THREE.Vector3(), q = new THREE.Quaternion();
+      c.getWorldPosition(o); c.getWorldQuaternion(q);
+      this.aim[i] = { ray: new THREE.Ray(o, new THREE.Vector3(0, 0, -1).applyQuaternion(q)), hand: !!src.hand };
+    });
     for (let i = 0; i < 2; i++) {
       const H = this.hands[i], X = this.xrHands[i];
       H.pinchStarted = H.pinchEnded = false;

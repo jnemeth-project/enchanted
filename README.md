@@ -6,26 +6,30 @@ Lights Out is a seated, hands-only VR wind-down for Meta Quest and Meta VR Glass
 
 **▶ Play it:** open **https://jnemeth-project.github.io/lights-out/** in the Meta Quest browser and tap **Enter the forest**.
 
-![The glowing forest, seen from your seat, with the ghost butterfly resting on a golden glowdrop](docs/forest.jpg)
+![The glowing forest, seen from your seat](docs/forest.jpg)
 
 ---
 
 ## A night in the forest
 
-1. **Arrive.** The forest is awake and bright. Boop a mushroom, brush a fern, poke a puffball, blow a dandelion. There's no rush.
-2. **Tuck it in.** Sleepy golden glowdrops float out of the mushroom clusters and drift into your reach. Squish one, and the cluster it came from settles down to sleep: the caps dim, the fairy dust falls, the light ribbons fade.
-3. **Rain.** When most of the forest is asleep, soft rain begins. Cup your hand, catch the rain, and tip it into the terracotta pot beside you.
-4. **Goodnight.** Your seed grows. The butterfly bows and drifts up toward the moon. The forest stays dark and quiet for as long as you'd like to sit in it.
+Your first visit starts with a one-minute tutorial. After that, each night you choose how to wind down:
+
+- **Fireflies.** Groups of ten fireflies drift out of the forest into your reach. Boop one and its light softly goes out; the forest around it settles to sleep. Then soft rain comes: cup your hands, catch it, and tip it into the terracotta pot to grow your mushroom.
+- **Stargazing.** The trees overhead part and the sky opens. Lie back (or just look up), point at a star and pinch, and it goes to sleep. When the last star sleeps, so does the forest.
+
+![Stargazing: the canopy has opened, the moon and a few bright sleepy stars overhead](docs/stargazing.jpg)
+
+Every mushroom you boop has its own soft note, so sweeping a hand across them plays a calm little scale. At the end, the butterfly bows and drifts up toward the moon.
 
 Nothing can go wrong. Nothing is timed. There are no menus floating in the air.
 
 ## Taught by a ghost butterfly, not by text
 
-A small butterfly made of soft light shows you each gesture instead of explaining it. It closes its wings over a glowdrop to show the squeeze, twirls when you get it right, and cups its wings to gather rain before carrying it to the pot.
+A small butterfly made of soft light shows you each gesture instead of explaining it. It boops the first firefly out to show you how, twirls when you get it right, and cups its wings to gather rain before carrying it to the pot. Short glowing words appear where you're looking, so it's never unclear what to do.
 
-| Shows you the squeeze | Shows you how to catch the rain |
+| Choose tonight's wind-down | Shows you how to catch the rain |
 | --- | --- |
-| ![The ghost butterfly closing its wings over a golden glowdrop](docs/butterfly-squeeze.jpg) | ![The butterfly holding its wings up like cupped hands to gather rain beside the terracotta pot](docs/butterfly-gathers-rain.jpg) |
+| ![Two glowing lights float in front of you: Fireflies and Stargazing](docs/choice.jpg) | ![The butterfly holding its wings up like cupped hands to gather rain beside the terracotta pot](docs/butterfly-gathers-rain.jpg) |
 
 ## A reason to come back
 
@@ -42,7 +46,8 @@ A small butterfly made of soft light shows you each gesture instead of explainin
 
 | In the forest | With your hands | With gaze and pinch (Meta VR Glasses) |
 | --- | --- | --- |
-| Glowdrop | Pinch, grab or poke it | Look at it, pinch |
+| Firefly | Boop it, pinch it | Look at it, pinch |
+| Star (stargazing) | Point at it and pinch | Look at it, pinch |
 | Mushroom near you | Tap the cap: a deep, soft *boop*, and it slowly changes colour | Look, pinch |
 | Fern | Brush through it for a soft swoosh | Look, pinch |
 | Puffball | Tap it to release a cloud of glowing spores | Look, pinch |
@@ -54,12 +59,12 @@ Every sound is generated live and kept low, round and soft: no chimes, nothing s
 
 ## Made for everyone
 
-![The look-to-select ring filling around a glowdrop](docs/look-to-select.jpg)
+![The look-to-select ring filling around something you can touch](docs/look-to-select.jpg)
 
 - **Look to select:** no hands needed. Look at anything you can touch and a soft ring fills; when it's full, it's done.
 - **One hand is enough** for everything, including catching and pouring the rain.
 - **Just sit:** no tasks at all. The forest falls asleep on its own while you watch.
-- **Brighter glow:** larger glowdrops and brighter things to touch.
+- **Brighter glow:** larger fireflies and brighter things to touch.
 - **Fully seated,** everything within arm's reach, no walking, no flashing, no fail states.
 - **Pauses** the moment the headset comes off.
 
@@ -70,7 +75,7 @@ The options are on the start screen and remembered between visits.
 - **Meta Quest 3 / 3S:** turn on hand tracking (*Settings → Movement tracking → Hand and body tracking*), open the link in the Meta Quest browser, put the controllers down, and tap **Enter the forest**. Sit comfortably with a little space around you.
 - **Meta VR Glasses:** works with gaze and pinch.
 - **On a computer:** choose **Look around on this screen**. Drag to look, click to touch.
-- **Quick tour:** add `?demo=1` to the link for a one-minute walkthrough of three nights.
+- **Tutorial again:** tap *Show me how to play* on the start screen, or add `?tutorial=1` to the link.
 
 Best with headphones.
 
@@ -84,7 +89,9 @@ Best with headphones.
 ```
 index.html        start screen and options
 src/main.js       the night: arrival, tucking in, rain, goodnight
-src/glowdrops.js  golden jelly glowdrops and the squish
+src/fireflies.js  fireflies and putting their lights out
+src/stars.js      stargazing: the sleepy stars and the opening canopy
+src/choice.js     choosing tonight's activity
 src/guide.js      the ghost butterfly
 src/touch.js      boops, swooshes, puffs, dandelions
 src/rain.js       rain, cupped hands, pouring

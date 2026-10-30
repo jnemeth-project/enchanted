@@ -8,6 +8,12 @@ export class Touch {
     this.W = W; this.sound = sound; this.effects = effects; this.count = 0; this.onAny = null;
     this.items = [];
     for (const o of W.boops) this.addBoop(o);
+    // Every mushroom you can boop has its own note, low to high from left to right,
+    // so sweeping your hand across them plays a calm pentatonic scale.
+    const boops = this.items.filter((it) => it.kind === 'boop')
+      .sort((a, b) => Math.atan2(a.center.x, -a.center.z) - Math.atan2(b.center.x, -b.center.z));
+    boops.forEach((it, i) => { it.hz = Touch.note(i); });
+    this.nextNote = boops.length;
     for (const o of W.ferns) {
       const s = worldSphere(o, { shrink: 0.65 });
       this.items.push({ kind: 'fern', o, ...s, sx: new Spring(60, 5), sz: new Spring(60, 5), inside: [false, false], cool: 0, rot: o.rotation.clone() });
@@ -25,6 +31,12 @@ export class Touch {
       const seeds = W.byName[o.name.replace('G_Dandelion_', 'G_DandelionSeeds_')];
       this.items.push({ kind: 'dandelion', o, center: c, radius: 0.13, inside: [false, false], blown: false, seeds });
     }
+  }
+
+  // A major pentatonic from A2: soft and impossible to make sound wrong together.
+  static note(i) {
+    const S = [110, 123.47, 138.59, 164.81, 185.0, 220, 246.94, 277.18, 329.63];
+    return S[((i % S.length) + S.length) % S.length];
   }
 
   addBoop(o, baseHz, opts = {}) {
