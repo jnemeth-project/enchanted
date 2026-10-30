@@ -54,6 +54,8 @@
     -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); }
   .opts label.dwell::after { border-radius: 0.7rem; -webkit-mask: none; mask: none; background: linear-gradient(90deg, rgba(143,245,212,0.16) calc(var(--dwell, 0) * 100%), transparent 0); inset: -3px -6px; }
   .dwell.dwelling::after { opacity: 1; }
+  .opts .group { font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: #8ff5d4; opacity: 0.8; margin-top: 0.35rem; }
+  .opts em { font-style: normal; color: #8ff5d4; }
   .enter-note { font-size: 0.8rem; color: #8d85ad; margin: 0.1rem 0 0.4rem; }
   #hint { position: fixed; bottom: 1.4rem; left: 50%; transform: translateX(-50%); color: var(--soft); font-size: 0.95rem; opacity: 0; transition: opacity 1.2s; pointer-events: none; }
   #hint.show { opacity: 0.85; }
@@ -77,9 +79,16 @@
   <button id="enter-screen" class="quiet" disabled>Look around on this screen</button>
   <button id="how-to" class="quiet small">Show me how to play</button>
   <div class="opts" role="group" aria-label="Options">
+    <div class="group">Play</div>
     <label><input type="checkbox" id="opt-look"><span>Look to select<small>No hands needed: look at something until its ring fills</small></span></label>
     <label><input type="checkbox" id="opt-sit"><span>Just sit<small>No tasks: the forest falls asleep on its own</small></span></label>
-    <label><input type="checkbox" id="opt-soft"><span>Soft edges<small>Some people feel motion sick with full side vision. This gently darkens and softens the edges of your view.</small></span></label>
+    <div class="group">Comfort</div>
+    <label><input type="checkbox" id="opt-calm"><span>Calm motion <em>(for motion sickness)</em><small>Softly darkened edges, slower movement, gentler rain, no sudden jumps</small></span></label>
+    <div class="group">Seeing</div>
+    <label><input type="checkbox" id="opt-large"><span>Large text<small>Bigger words on a dark backing, shown for longer</small></span></label>
+    <label><input type="checkbox" id="opt-speak"><span>Read aloud<small>The words that appear are spoken to you</small></span></label>
+    <label><input type="checkbox" id="opt-guides"><span>Sound guides<small>Things you can touch hum softly as your hand gets near</small></span></label>
+    <label><input type="checkbox" id="opt-outlines"><span>Clear outlines<small>A bright edge around everything you can touch</small></span></label>
     <label><input type="checkbox" id="opt-bright"><span>Brighter glow<small>Larger fireflies and brighter things to touch</small></span></label>
     <div class="vol"><span>Volume</span><input type="range" id="opt-volume" min="0" max="1" step="0.05" value="0.8" aria-label="Volume"></div>
   </div>

@@ -82,6 +82,24 @@ export class Sound {
   }
 
   // A light going out (a firefly or a star): a soft breath of air and a low note that settles down.
+  // Sound guides: a soft hum from the nearest thing you can touch, louder as your hand gets closer
+  guide(i, pos, hz, level) {
+    if (!this.enabled) return;
+    const ctx = this.ctx; this._guides = this._guides || [];
+    let G = this._guides[i];
+    if (!G) {
+      const p = ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 0.4; p.connect(this.master);
+      const g = ctx.createGain(); g.gain.value = 0; g.connect(p);
+      const o = ctx.createOscillator(); o.type = 'sine'; o.connect(g); o.start();
+      const o2 = ctx.createOscillator(); o2.type = 'sine'; const g2 = ctx.createGain(); g2.gain.value = 0.3; o2.connect(g2); g2.connect(g); o2.start();
+      G = this._guides[i] = { p, g, o, o2 };
+    }
+    const t = ctx.currentTime;
+    if (pos) { G.p.positionX.setTargetAtTime(pos.x, t, 0.05); G.p.positionY.setTargetAtTime(pos.y, t, 0.05); G.p.positionZ.setTargetAtTime(pos.z, t, 0.05); }
+    if (hz) { G.o.frequency.setTargetAtTime(hz, t, 0.08); G.o2.frequency.setTargetAtTime(hz * 2.003, t, 0.08); }
+    G.g.gain.setTargetAtTime(Math.max(0, level) * 0.07, t, 0.08);
+  }
+
   // one soft raindrop tapping a leaf somewhere near you
   _pat() {
     const ctx = this.ctx, t = ctx.currentTime, a = Math.random() * Math.PI * 2, r = 1 + Math.random() * 4;

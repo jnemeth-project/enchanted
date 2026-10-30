@@ -16,7 +16,7 @@ import { Guide } from './guide.js';
 import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { SkyGames } from './skygames.js';
-import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow } from './play.js';
+import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines } from './play.js';
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { tweens, clamp, glowTexture } from './util.js';
@@ -29,6 +29,7 @@ const OPT_KEY = 'lightsout.options';
 const options = (() => { try { return { look: false, sit: false, bright: false, volume: 0.8, ...JSON.parse(localStorage.getItem(OPT_KEY) || '{}') }; } catch { return { look: false, sit: false, bright: false, volume: 0.8 }; } })();
 if (params.get('mode') === 'sit') options.sit = true;
 if (params.has('look')) options.look = true;
+if (options.calm === undefined && options.soft) options.calm = true; // the old Soft edges setting carries over
 let JUST_SIT = options.sit;
 
 const ui = {
@@ -59,6 +60,10 @@ const vignette = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderM
   fragmentShader: 'uniform float strength; varying vec2 vUv; void main(){ float r = length(vUv * 2. - 1.); float a = smoothstep(0.17, 0.42, r); gl_FragColor = vec4(0.0, 0.0, 0.01, a * strength); }',
 }));
 vignette.position.set(0, 0, -0.2); vignette.renderOrder = 999; vignette.frustumCulled = false; vignette.visible = false; camera.add(vignette);
+// a black veil that fades in and out around a re-centre, so the world never jumps (Calm motion)
+const veil = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false }));
+veil.position.set(0, 0, -0.15); veil.renderOrder = 1000; veil.visible = false; camera.add(veil);
+let MOTION = 1; // how lively the twirling and drifting is (Calm motion slows it)
 function setSoftEdges(on) { vignette.visible = on; vignette.material.uniforms.strength.value = on ? 0.92 : 0; renderer.xr.setFoveation(on ? 1 : 0); }
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
@@ -81,7 +86,34 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines;
+// Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
+function setCalm(on) {
+  options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
+  effects.motion = on ? 0.5 : 1; if (rain) rain.calm = on;
+}
+// re-centre the view; with Calm motion, behind a quick soft fade so nothing jumps
+function gentleRecenter() {
+  if (!renderer.xr.isPresenting) return;
+  if (!options.calm) { recenter(); return; }
+  veil.visible = true;
+  tweens.add(0.3, (k) => { veil.material.opacity = k; }, { done: () => { recenter(); tweens.add(0.6, (k) => { veil.material.opacity = 1 - k; }, { done: () => { veil.visible = false; } }); } });
+}
+// Read aloud: the words that appear are also spoken, softly and slowly
+function speak(text) {
+  try {
+    if (!window.speechSynthesis) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text.replace(/\n/g, '. ')); u.rate = 0.88; u.pitch = 1.0; u.volume = 0.9;
+    const v = speechSynthesis.getVoices().find((x) => /en[-_]GB/i.test(x.lang)) || speechSynthesis.getVoices().find((x) => /^en/i.test(x.lang)); if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  } catch {}
+}
+function applyAccess() {
+  captions.large = !!options.large; captions.speak = options.speak ? speak : null;
+  if (guides) guides.on = !!options.guides;
+  if (outlines) outlines.set(!!options.outlines);
+}
 const phase = { name: 'loading', t: 0, rainT: 0, mode: null };
 const session = { t: 0, len: 600, warned: false };
 const remaining = () => session.len - session.t;
@@ -108,8 +140,15 @@ async function init() {
   potGroup = new THREE.Group(); scene.add(potGroup);
   for (const o of [W.magic.stump, W.byName.G_Shadow_SeedStump, W.magic.dust, ...(W.magic.stages || [])]) if (o) potGroup.attach(o);
   potGroup.visible = false;
-  menu.softEdges = !!options.soft;
-  menu.onSoftEdges = (on) => { options.soft = on; setSoftEdges(on); try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
+  menu.softEdges = !!options.calm;
+  menu.onSoftEdges = (on) => { setCalm(on); try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
+  guides = new SoundGuides(sound, () => [
+    ...touch.items.filter((it) => (it.kind === 'boop' || it.kind === 'dandelion') && !it.away && !it.blown).map((it) => ({ at: it.center, r: it.radius, hz: it.kind === 'boop' ? it.hz * 2 : 440 })),
+    ...crystals.list.map((c) => ({ at: c.c, r: c.r, hz: c.hz })),
+    ...pebbles.list.filter((p) => p.state === 'rest').map((p) => ({ at: p.o.position, r: 0.06, hz: 247 })),
+  ]);
+  outlines = new Outlines([...W.boops, ...W.crystals, ...W.pebbles, ...W.dandelions, ...W.puffs]);
+  applyAccess();
   menu.volume = options.volume; menu.muted = !!options.muted;
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
   menu.onMainMenu = toMainMenu; menu.onSwap = swapMode;
@@ -163,17 +202,18 @@ function begin() {
 
 function readOptions() {
   const q = (id) => document.getElementById(id);
-  if (q('opt-look')) { options.look = q('opt-look').checked; options.sit = q('opt-sit').checked; options.bright = q('opt-bright').checked; options.soft = !!(q('opt-soft') && q('opt-soft').checked); options.volume = +q('opt-volume').value; }
+  if (q('opt-look')) { options.look = q('opt-look').checked; options.sit = q('opt-sit').checked; options.bright = q('opt-bright').checked; options.calm = !!(q('opt-calm') && q('opt-calm').checked);
+    for (const k of ['large', 'speak', 'guides', 'outlines']) options[k] = !!(q('opt-' + k) && q('opt-' + k).checked); options.volume = +q('opt-volume').value; }
   const sel = document.querySelector('#session button.on'); if (sel) options.session = +sel.dataset.min;
   try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {}
   JUST_SIT = options.sit;
   if (JUST_SIT) TUTORIAL = false;
   gaze.enabled = options.look;
-  setSoftEdges(!!options.soft);
+  setCalm(!!options.calm); applyAccess();
   if (flies) flies.big = options.bright;
   if (touch) touch.highlight = options.bright ? 0.35 : 0;
 }
-for (const [id, key] of [['opt-look', 'look'], ['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-soft', 'soft']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
+for (const [id, key] of [['opt-look', 'look'], ['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-calm', 'calm'], ['opt-large', 'large'], ['opt-speak', 'speak'], ['opt-guides', 'guides'], ['opt-outlines', 'outlines']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
 { const v = document.getElementById('opt-volume'); if (v) v.value = options.volume; }
 // how long tonight's session lasts: 5, 10, 15 or 20 minutes (remembered)
 for (const b of document.querySelectorAll('#session button')) {
@@ -219,7 +259,7 @@ function ahead(dist = 1.25, up = 0.16) {
 // the line you are looking along (for choosing stars by looking, while lying back)
 function eyeRay() { const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera; const o = new THREE.Vector3(); cam.getWorldPosition(o); return new THREE.Ray(o, new THREE.Vector3(0, 0, -1).applyQuaternion(viewQuat())); }
 function viewQuat() { const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera; const q = new THREE.Quaternion(); cam.getWorldQuaternion(q); return q; }
-function say(text, { width = 1.1, hold = 3.4, at = null } = {}) { return captions.show(text, at || (flies.active ? ahead(1.25, -0.32) : ahead()), { width, hold }); } // under the fireflies while they play
+function say(text, { width = 1.1, hold = 3.4, at = null } = {}) { return captions.show(text, at || (flies.active ? ahead(1.25, 0.42) : ahead()), { width, hold }); } // under the fireflies while they play
 
 // ---------------------------------------------------------------- the night
 function updatePhases(dt) {
@@ -326,7 +366,7 @@ function startMode(mode) {
     let at = 0.5; for (const [text, hold] of steps) { tweens.add(0.1, () => {}, { delay: at, done: () => { if (phase.mode === mode) say(text, { hold }); } }); at += hold + 0.6; }
 
     // if you lie down, the forest follows: re-centre once you have settled
-    for (const d of [4, 10]) tweens.add(0.1, () => {}, { delay: d, done: () => { if (renderer.xr.isPresenting) recenter(); } });
+    for (const d of [4, 10]) tweens.add(0.1, () => {}, { delay: d, done: () => gentleRecenter() });
     guide.goTo(new THREE.Vector3(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 });
   }
 }
@@ -367,7 +407,7 @@ function wrapUpSky() {
   say('Time to sit up\nThe rain is coming for your mushroom', { hold: 4 });
   const from = W.canopy.uniform.value; tweens.add(6, (k) => W.canopy.set(from * (1 - k)));
   // sitting back up: seat the player again once they have had a moment
-  tweens.add(0.1, () => {}, { delay: 4.5, done: () => { if (renderer.xr.isPresenting) recenter(); } });
+  tweens.add(0.1, () => {}, { delay: 4.5, done: () => gentleRecenter() });
   tweens.add(0.1, () => {}, { delay: 5, done: () => { if (phase.name !== 'goodnight') startRain(); } });
 }
 
@@ -521,7 +561,7 @@ function step(dt) {
     if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); crystals.update(dt, input); dirt.update(dt, input);
+    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
     if (phase.name !== 'goodnight') session.t += dt;
@@ -531,8 +571,8 @@ function step(dt) {
   }
   if (W) {
     for (const m of shaderMats) m.uniforms.time.value = time;
-    for (const o of W.dust) o.rotation.y += (o.userData.twirl_speed || 0.2) * (o.userData.twirlScale ?? 1) * dt;
-    for (const o of W.ribbons) o.rotation.y += (o.userData.twirl_speed || 0.15) * dt;
+    for (const o of W.dust) o.rotation.y += (o.userData.twirl_speed || 0.2) * (o.userData.twirlScale ?? 1) * MOTION * dt;
+    for (const o of W.ribbons) o.rotation.y += (o.userData.twirl_speed || 0.15) * MOTION * dt;
     if (W.magic.dust) W.magic.dust.rotation.y += 0.2 * dt;
     const sp = W.dim.Spores; if (sp && sp.position) sp.position.y = Math.sin(time * 0.4) * 0.05;
   }

@@ -83,7 +83,7 @@ export class Menu {
     row(1, this.muted ? 'Sound on' : 'Mute', 'mute');
     const nx = NEXT_GAME[this.mode] || NEXT_GAME.fireflies;
     row(2, 'Swap to ' + nx.title, 'swap', nx.sub);
-    row(3, this.softEdges ? 'Soft edges: on' : 'Soft edges: off', 'edges', 'if motion makes you queasy: softens side vision');
+    row(3, this.softEdges ? 'Calm motion: on' : 'Calm motion: off', 'edges', 'for motion sickness: gentler, softer edges');
     row(4, 'Close', 'close');
     this.panelT.needsUpdate = true;
   }

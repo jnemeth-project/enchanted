@@ -54,10 +54,10 @@ export class Rain {
     this.mat.opacity = 0.45 * this.level; // a little easier to see
     if (this.level < 0.01 && this.target === 0) this.lines.visible = false;
     if (this.lines.visible) {
-      const p = this.geo.attributes.position.array, live = Math.floor(N * this.level);
+      const p = this.geo.attributes.position.array, live = Math.floor(N * this.level * (this.calm ? 0.45 : 1)), sp = this.calm ? 0.5 : 1; // Calm motion: fewer, slower drops
       for (let i = 0; i < N; i++) {
         const d = this.drops[i];
-        if (i < live) { d.y -= d.v * dt; if (d.y < 0) this._respawn(d); } else d.y = -10;
+        if (i < live) { d.y -= d.v * dt * sp; if (d.y < 0) this._respawn(d); } else d.y = -10;
         p[i * 6] = d.x; p[i * 6 + 1] = d.y; p[i * 6 + 2] = d.z;
         p[i * 6 + 3] = d.x + 0.01; p[i * 6 + 4] = d.y + d.len; p[i * 6 + 5] = d.z;
       }

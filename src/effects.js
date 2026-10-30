@@ -7,6 +7,7 @@ export class Effects {
 
   // spec: { count, size, color, life:[a,b], init(i, p, vel, data), step(i, p, vel, data, age, dt) -> alpha 0..1, done }
   burst(spec) {
+    if (this.motion !== undefined && this.motion < 1) spec.count = Math.max(4, Math.round(spec.count * this.motion));
     const n = spec.count;
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);

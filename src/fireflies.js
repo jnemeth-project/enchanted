@@ -7,20 +7,44 @@ import { glowTexture, rand, clamp } from './util.js';
 
 const HIDDEN = new THREE.Color(1.0, 0.9, 0.62);    // plain firefly glow: pale gold, so every colour stands out from it
 const CORE = new THREE.Color(1.0, 0.98, 0.8);
-// six soft colours that stay easy to tell apart at night, each with its own low note
+// six strong colours that are easy to tell apart at night. Each also has its own shape and its own note,
+// so a pair can be matched by colour, by shape or by sound (colour blind players included).
 export const COLOURS = [
-  { c: new THREE.Color(1.0, 0.45, 0.78), hz: 164.81 },  // rose
-  { c: new THREE.Color(1.0, 0.62, 0.22), hz: 185.0 },   // amber
-  { c: new THREE.Color(0.35, 1.0, 0.72), hz: 220.0 },   // mint
-  { c: new THREE.Color(0.38, 0.7, 1.0), hz: 246.94 },   // sky
-  { c: new THREE.Color(0.68, 0.5, 1.0), hz: 293.66 },   // violet
-  { c: new THREE.Color(0.95, 0.96, 1.0), hz: 329.63 },  // moon white
+  { c: new THREE.Color(1.0, 0.16, 0.14), hz: 164.81, shape: 'heart' },    // red
+  { c: new THREE.Color(1.0, 0.86, 0.08), hz: 196.0, shape: 'star' },      // yellow
+  { c: new THREE.Color(0.18, 1.0, 0.28), hz: 220.0, shape: 'leaf' },      // green
+  { c: new THREE.Color(0.16, 0.42, 1.0), hz: 261.63, shape: 'drop' },     // blue
+  { c: new THREE.Color(1.0, 0.2, 0.95), hz: 293.66, shape: 'moon' },      // magenta
+  { c: new THREE.Color(1.0, 1.0, 1.0), hz: 349.23, shape: 'diamond' },    // white
 ];
+
+// the symbol drawn inside a revealed firefly: white with a dark edge, readable on any colour
+const iconCache = {};
+function iconTex(shape) {
+  if (iconCache[shape]) return iconCache[shape];
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  g.translate(64, 64); g.beginPath();
+  if (shape === 'heart') { g.moveTo(0, 34); g.bezierCurveTo(-50, 0, -34, -42, 0, -16); g.bezierCurveTo(34, -42, 50, 0, 0, 34); }
+  else if (shape === 'star') { for (let i = 0; i < 10; i++) { const r = i % 2 ? 17 : 40, a = -Math.PI / 2 + i * Math.PI / 5; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); } g.closePath(); }
+  else if (shape === 'leaf') { g.moveTo(0, -40); g.quadraticCurveTo(38, 0, 0, 40); g.quadraticCurveTo(-38, 0, 0, -40); }
+  else if (shape === 'drop') { g.moveTo(0, -42); g.bezierCurveTo(10, -18, 34, 4, 26, 22); g.arc(0, 18, 26, 0.15, Math.PI - 0.15); g.bezierCurveTo(-34, 4, -10, -18, 0, -42); }
+  else if (shape === 'moon') { g.arc(0, 0, 36, 0.6, Math.PI * 2 - 0.6); g.arc(16, 0, 26, Math.PI * 2 - 1.0, 1.0, true); g.closePath(); }
+  else { g.moveTo(0, -40); g.lineTo(30, 0); g.lineTo(0, 40); g.lineTo(-30, 0); g.closePath(); }
+  g.lineJoin = 'round'; g.lineWidth = 12; g.strokeStyle = 'rgba(10, 8, 20, 0.85)'; g.stroke(); g.fillStyle = '#ffffff'; g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; iconCache[shape] = t; return t;
+}
+
+// a glossy glowing ball: brighter where it faces you, a soft rim, and a little highlight, so it reads as a solid thing
+const orbVS = `varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`;
+const orbFS = `uniform vec3 color; uniform float light; varying vec3 vN; varying vec3 vV;
+void main(){ float f = max(dot(vN, vV), 0.); vec3 base = color * (0.35 + 0.75 * f);
+  float rim = pow(1. - f, 2.2) * 0.55; float spec = pow(max(dot(vN, normalize(vec3(-0.35, 0.6, 0.72))), 0.), 28.) * 0.9;
+  gl_FragColor = vec4((base + color * rim + vec3(spec)) * light, light); }`;
 
 // A gentle arc in front of you, raised a little above the eyes so the fireflies glow against the dark trunks (player faces -Z): rows x columns, slightly staggered.
 function arcSlots(n) {
   const rows = n > 12 ? 3 : 2, cols = Math.ceil(n / rows);
-  const span = n > 24 ? 124 : n > 12 ? 104 : n > 6 ? 80 : 64, R = n > 12 ? 0.56 : 0.52, ys = rows === 3 ? [0.9, 1.03, 1.16] : [0.96, 1.1]; // above eye level: against the dark tree line, not the glowing mushrooms
+  const span = n > 24 ? 118 : n > 12 ? 100 : n > 6 ? 80 : 64, R = n > 12 ? 0.5 : 0.47, ys = rows === 3 ? [0.52, 0.65, 0.78] : [0.58, 0.72]; // chest to shoulder height: easy to reach without sitting up
   const out = [];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols && out.length < n; c++) {
     const a = THREE.MathUtils.degToRad(-span / 2 + span * (c + (r % 2 ? 0.5 : 0.25)) / cols);
@@ -71,10 +95,15 @@ export class Fireflies {
     halo.scale.setScalar(0.1 * k); halo.renderOrder = 4; g.add(halo);
     const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: CORE.clone(), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
     core.scale.setScalar(0.024 * k); core.renderOrder = 4; g.add(core);
+    if (!this.orbGeo) this.orbGeo = new THREE.SphereGeometry(1, 22, 16);
+    const orb = new THREE.Mesh(this.orbGeo, new THREE.ShaderMaterial({ uniforms: { color: { value: HIDDEN.clone() }, light: { value: 0 } }, vertexShader: orbVS, fragmentShader: orbFS, transparent: true }));
+    orb.scale.setScalar(0.021 * k); orb.renderOrder = 5; g.add(orb);
+    const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconTex(COLOURS[ci].shape), transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
+    icon.scale.setScalar(0.026 * k); icon.renderOrder = 6; g.add(icon);
     g.position.copy(from); g.visible = false; this.scene.add(g);
     const mid = from.clone().lerp(to, 0.5).add(new THREE.Vector3(rand(-0.8, 0.8), rand(0.4, 1.2), rand(-0.5, 0.5)));
     this.list.push({
-      g, body, halo, core, from, mid, to, ci, t: -delay, dur: this.fast ? rand(1.8, 2.4) : clamp(from.distanceTo(to) / 2.4, 3, 6),
+      g, body, halo, core, orb, icon, from, mid, to, ci, t: -delay, dur: this.fast ? rand(1.8, 2.4) : clamp(from.distanceTo(to) / 2.4, 3, 6),
       state: 'fly', light: 0, ph: Math.random() * 10, reveal: 0, hint: 0, outT: 0, held: false, inside: [false, false], r: 0.045 * k,
     });
   }
@@ -117,7 +146,7 @@ export class Fireflies {
         f.outT += dt;
         f.light = Math.max(0, 1 - f.outT / 1.1);
         if (f.outT > 0.6) { f.g.position.y -= dt * 0.1; f.g.position.z -= dt * 0.06; }
-        if (f.outT > 4) { this.scene.remove(f.g); f.halo.material.dispose(); f.core.material.dispose(); this.list.splice(i, 1); continue; }
+        if (f.outT > 4) { this.scene.remove(f.g); f.halo.material.dispose(); f.core.material.dispose(); f.orb.material.dispose(); f.icon.material.dispose(); this.list.splice(i, 1); continue; }
       }
       // colour: gold while hidden, its own colour while shown (or hinted)
       const want = f.state === 'shown' || f.state === 'pair' || f.state === 'out' ? 1 : 0;
@@ -134,6 +163,13 @@ export class Fireflies {
       f.halo.scale.setScalar(0.1 * (this.big ? 1.3 : 1) * (0.9 + 0.8 * show + (f.state === 'pair' ? 0.3 : 0)));
       f.core.scale.setScalar(0.024 * (this.big ? 1.3 : 1) * (1 + 0.6 * show));
       f.body.visible = f.state === 'out' && f.light < 0.5;
+      // the solid glowing ball, and the colour's symbol inside it while it shows
+      f.orb.material.uniforms.color.value.copy(HIDDEN).lerp(COLOURS[f.ci].c, show);
+      f.orb.material.uniforms.light.value = Math.min(1, f.light * (0.9 + 0.1 * breath));
+      f.orb.scale.setScalar(0.021 * (this.big ? 1.3 : 1) * (1 + 0.25 * show));
+      f.icon.material.opacity = Math.min(1, show * 1.2) * f.light;
+      f.icon.scale.setScalar(0.026 * (this.big ? 1.3 : 1) * (1 + 0.25 * show));
+      f.halo.material.opacity *= 0.7; // a softer glow around the ball, so the colour of the ball itself leads
     }
     if (this.allDone && !this.doneFired && !this.list.some((f) => f.state === 'pair')) { this.doneFired = true; if (this.onAllDone) this.onAllDone(); }
   }

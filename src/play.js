@@ -384,3 +384,37 @@ export class MushroomThrow {
     }
   }
 }
+
+// Sound guides (for low vision): the nearest thing you can touch hums softly, louder as your hand gets closer,
+// in its own note and from its own direction, so you can find it by ear.
+export class SoundGuides {
+  constructor(sound, sources) { this.sound = sound; this.sources = sources; this.on = false; this.was = false; }
+  update(dt, input) {
+    if (!this.on) { if (this.was) { this.sound.guide(0, null, null, 0); this.sound.guide(1, null, null, 0); this.was = false; } return; }
+    this.was = true;
+    input.hands.forEach((h, i) => {
+      if (!h.present) { this.sound.guide(i, null, null, 0); return; }
+      let best = null, bd = 0.38;
+      for (const s of this.sources()) { const d = Math.max(0, s.at.distanceTo(h.palm) - (s.r || 0.05)); if (d < bd) { bd = d; best = s; } }
+      if (best) { const k = 1 - bd / 0.38; this.sound.guide(i, best.at, best.hz, k * k); } else this.sound.guide(i, null, null, 0);
+    });
+  }
+}
+
+// Clear outlines (for low vision): everything you can touch gets a bright, clean edge so it stands out from the scenery
+const outlineMat = new THREE.ShaderMaterial({
+  uniforms: { color: { value: new THREE.Color(1.0, 0.96, 0.72) }, width: { value: 0.006 } },
+  vertexShader: 'uniform float width; void main(){ vec4 w = modelMatrix * vec4(position, 1.); vec3 n = normalize(mat3(modelMatrix) * normal); w.xyz += n * width; gl_Position = projectionMatrix * viewMatrix * w; }',
+  fragmentShader: 'uniform vec3 color; void main(){ gl_FragColor = vec4(color, 0.9); }',
+  side: THREE.BackSide, transparent: true, depthWrite: false,
+});
+export class Outlines {
+  constructor(objects) {
+    this.lines = [];
+    for (const o of objects) if (o) o.traverse((m) => {
+      if (!m.isMesh || m.userData.isOutline || !m.geometry || !m.geometry.attributes.normal) return;
+      const l = new THREE.Mesh(m.geometry, outlineMat); l.userData.isOutline = true; l.visible = false; l.renderOrder = 1; m.add(l); this.lines.push(l);
+    });
+  }
+  set(on) { for (const l of this.lines) l.visible = on; }
+}
