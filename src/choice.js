@@ -24,7 +24,7 @@ export class Choice {
   // opts: [{ key, title, sub, color }]
   show(opts) {
     this.group.clear(); this.options = [];
-    const xs = opts.length === 2 ? [-0.2, 0.2] : opts.map((_, i) => (i - (opts.length - 1) / 2) * 0.36);
+    const xs = opts.length === 2 ? [-0.2, 0.2] : opts.map((_, i) => (i - (opts.length - 1) / 2) * 0.38);
     opts.forEach((o, i) => {
       const at = new THREE.Vector3(xs[i], 1.08, -0.48);
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: o.color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -39,6 +39,8 @@ export class Choice {
       this.options.push({ ...o, at, halo, core, text, tw, th, hot: 0, inside: [false, false] });
     });
     this.group.visible = true; this.active = true; this.k = 0;
+    // nothing can be chosen straight away: wait a moment, and until hands and eyes have moved off whatever they rested on
+    this.armT = 0; this.armed = false;
     tweens.add(1.4, (k) => { this.k = k; });
   }
 
@@ -50,6 +52,8 @@ export class Choice {
 
   update(dt, time, input) {
     if (!this.group.visible) return;
+    this.armT = (this.armT || 0) + dt;
+    if (!this.armed && this.armT > 1.8) this.armed = true;
     for (const o of this.options) {
       let hot = 0;
       if (this.active) input.hands.forEach((h, hi) => {
@@ -74,7 +78,7 @@ export class Choice {
   }
 
   pick(o) {
-    if (!this.active) return;
+    if (!this.active || !this.armed) return;
     this.active = false;
     this.sound.boop(o.at, 164.81);
     tweens.add(0.6, (k) => { o.halo.scale.setScalar(0.16 * (1.35 + k)); });

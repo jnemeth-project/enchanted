@@ -154,6 +154,19 @@ export class SkyGames {
     return new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)).normalize();
   }
 
+  // the direction you rest your eyes on (followed slowly), kept up in the open sky, and the picture's "up"
+  _rest() {
+    let c = this.restDir ? this.restDir.clone() : this._dirAt(0, 70);
+    const minEl = Math.sin(THREE.MathUtils.degToRad(48));
+    if (c.y < minEl) { const h = new THREE.Vector3(c.x, 0, c.z); if (h.lengthSq() < 1e-6) h.set(0, 0, -1); h.normalize().multiplyScalar(Math.sqrt(1 - minEl * minEl)); c = h.setY(minEl).normalize(); }
+    let up = this.viewQuat ? new THREE.Vector3(0, 1, 0).applyQuaternion(this.viewQuat()) : new THREE.Vector3(0, 0, 1);
+    up.addScaledVector(c, -up.dot(c));
+    if (up.lengthSq() < 1e-4) up = new THREE.Vector3(0, 0, 1).addScaledVector(c, -c.z);
+    up.normalize();
+    return { c, up, right: c.clone().cross(up).normalize() };
+  }
+  _near(b, degX, degY) { return b.c.clone().addScaledVector(b.right, Math.tan(THREE.MathUtils.degToRad(degX))).addScaledVector(b.up, Math.tan(THREE.MathUtils.degToRad(degY))).normalize(); }
+
   _star(dir, { size = 1.6, color = PALE, state = 'waiting', bright = 0 } = {}) {
     const p = this.eye.clone().addScaledVector(dir, DIST);
     const mk = (c, s) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, color: c.clone(), transparent: true, opacity: 0, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, fog: false })); sp.scale.setScalar(s); sp.position.copy(p); sp.renderOrder = -4; this.group.add(sp); return sp; };
@@ -186,7 +199,9 @@ export class SkyGames {
 
   // ---------------------------------------------------------------- counting stars
   _spawnCountStar() {
-    const s = this._star(this._dirAt(rand(-55, 55), rand(48, 86)), { size: rand(1.4, 1.9), color: Math.random() < 0.35 ? WARM : PALE, state: 'next' });
+    // within easy eye movement of where you are looking: no turning your head
+    const b = this._rest(), a = Math.random() * Math.PI * 2, r = rand(3, 11);
+    const s = this._star(this._near(b, Math.cos(a) * r, Math.sin(a) * r * 0.75), { size: rand(1.4, 1.9), color: Math.random() < 0.35 ? WARM : PALE, state: 'next' });
     s.bright = 1;
   }
 
@@ -206,10 +221,9 @@ export class SkyGames {
     const def = SHAPES[this.order[this.shapeIdx % this.order.length]]; this.shapeIdx++;
     if (this.shapeIdx % this.order.length === 0) this.order = shuffle(this.order);
     // a patch of sky, high overhead, its "up" toward your head when you lie back
-    const c = this._dirAt(rand(-30, 30), rand(62, 80));
-    const zUp = new THREE.Vector3(0, 0, 1).addScaledVector(c, -c.z).normalize();
-    const right = c.clone().cross(zUp).normalize();
-    const half = THREE.MathUtils.degToRad(rand(10, 13));
+    // right where you are looking, small enough to take in with your eyes alone, upright to you
+    const b = this._rest(), c = b.c, zUp = b.up, right = b.right;
+    const half = THREE.MathUtils.degToRad(rand(6.5, 7.5));
     const toDir = ([x, y]) => c.clone().addScaledVector(right, Math.tan(half) * x).addScaledVector(zUp, Math.tan(half) * y).normalize();
     // stars are shared where strokes meet; steps are the stars to look at, in order
     const stars = [], key = (q) => q[0].toFixed(2) + ',' + q[1].toFixed(2), byKey = new Map(), steps = [];
@@ -297,6 +311,7 @@ export class SkyGames {
     let hover = null;
     if (input && input.aim) for (const a of input.aim) if (a) { const s = this._aimed(a.ray); if (s) hover = s; }
     const look = this.eyeRay && this.eyeRay();
+    if (look) { if (!this.restDir) this.restDir = look.direction.clone(); else this.restDir.lerp(look.direction, Math.min(1, dt * 0.12)).normalize(); }
     const looked = look ? this._aimed(look) : null;
     if (looked) hover = looked;
     if (looked && this.ownDwell && this.cool <= 0) { this.dwell += dt; if (this.dwell >= DWELL) this.choose(looked); } else this.dwell = Math.max(0, this.dwell - dt * 2);

@@ -163,7 +163,7 @@ ui.vr.addEventListener('click', async () => {
   try {
     const session = await navigator.xr.requestSession('immersive-vr', { requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking'] });
     await renderer.xr.setSession(session);
-    camera.position.set(0, 0, 0); xrFrames = 0; desktop.enabled = false;
+    camera.position.set(0, 0, 0); xrFrames = 0; xrCentred = 0; desktop.enabled = false;
     session.addEventListener('end', () => { rig.position.set(0, 0, 0); camera.position.copy(EYE); desktop.enabled = true; });
     begin();
   } catch (e) { console.error(e); ui.status.textContent = 'Could not start VR on this device.'; }
@@ -173,6 +173,12 @@ if (ui.howto) ui.howto.addEventListener('click', () => { TUTORIAL = true; state.
 
 // Put the player's head exactly at the seat, at seated eye height, whatever their real posture
 // (sitting, or lying back for the stars).
+let xrCentred = 0;
+function headTracked() {
+  const head = new THREE.Vector3(); renderer.xr.getCamera().getWorldPosition(head);
+  const y = head.y - rig.position.y;
+  return y > 0.35 && y < 2.4; // a real head, sitting or standing, above the floor
+}
 function recenter() {
   const head = new THREE.Vector3(); renderer.xr.getCamera().getWorldPosition(head);
   const local = head.clone().sub(rig.position);
@@ -453,7 +459,14 @@ if (DEBUG) window.__tick = (seconds, dt = 1 / 30) => { for (let i = 0; i < secon
 
 function step(dt) {
   time += dt;
-  if (renderer.xr.isPresenting) { xrFrames++; if (xrFrames === 4) recenter(); }
+  // seat the player at seated eye height once the headset really knows where their head is
+  // (in the first frames the head can read as being on the floor, which would lift the world's eyes a metre too high),
+  // then once more a couple of seconds later, when they have settled
+  if (renderer.xr.isPresenting) {
+    xrFrames++;
+    if (!xrCentred && xrFrames > 3 && headTracked()) { recenter(); xrCentred = performance.now(); }
+    else if (xrCentred > 0 && performance.now() - xrCentred > 2500) { recenter(); xrCentred = -1; }
+  }
   desktop.update();
   input.update(dt);
   if (W && phase.name !== 'loading') {
