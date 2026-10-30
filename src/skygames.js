@@ -223,7 +223,7 @@ export class SkyGames {
     // a patch of sky, high overhead, its "up" toward your head when you lie back
     // right where you are looking, small enough to take in with your eyes alone, upright to you
     const b = this._rest(), c = b.c, zUp = b.up, right = b.right;
-    const half = THREE.MathUtils.degToRad(rand(6.5, 7.5));
+    const half = THREE.MathUtils.degToRad(rand(10, 11)); // about 20 degrees across: spread out, still within easy eye movement
     const toDir = ([x, y]) => c.clone().addScaledVector(right, Math.tan(half) * x).addScaledVector(zUp, Math.tan(half) * y).normalize();
     // stars are shared where strokes meet; steps are the stars to look at, in order
     const stars = [], key = (q) => q[0].toFixed(2) + ',' + q[1].toFixed(2), byKey = new Map(), steps = [];
