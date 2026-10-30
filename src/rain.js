@@ -111,7 +111,7 @@ export class Rain {
     if (this.level < 0.3) return null;
     const tgt = this.seed.target;
     if (ray.distanceToPoint(tgt) >= 0.28) return null;
-    return { key: 'stump', size: 0.42, point: tgt.clone(), fire: () => {
+    return { key: 'stump', size: 0.42, gazeNear: true, point: tgt.clone(), fire: () => {
       const from = tgt.clone().add(new THREE.Vector3(0, 0.6, 0));
       for (let i = 0; i < 12; i++) setTimeout(() => this.effects.water(from, new THREE.Vector3()), i * 120);
       const stop = this.sound.trickle(tgt); setTimeout(stop, 1600);

@@ -40,7 +40,10 @@ export class Gaze {
     // a small soft dot shows where you are looking
     this.dot.position.copy(o).addScaledVector(dir, 1.2); this.dot.quaternion.copy(q); this.dot.scale.setScalar(0.004);
     this.cool = Math.max(0, this.cool - dt);
-    const c = this.cool > 0 ? null : this.input.pick(ray);
+    let c = this.cool > 0 ? null : this.input.pick(ray);
+    // things within arm's reach are for your hands: looking only chooses things further away
+    // (except what is meant to be used by looking, like the fireflies in their game or the options panel)
+    if (c && !c.gazeNear && c.point && c.point.distanceTo(o) < 1.2) c = null;
     if (c && c.key === this.key) this.t += dt; else { this.key = c ? c.key : null; this.t = 0; }
     this.fade += ((c ? 1 : 0) - this.fade) * Math.min(1, dt * 8);
     const m = this.ring.material.uniforms;

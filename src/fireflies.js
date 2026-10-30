@@ -161,7 +161,7 @@ export class Fireflies {
       const along = f.g.position.distanceTo(ray.origin);
       if (ray.distanceToPoint(f.g.position) < Math.max(0.045, along * 0.03) && along < bd) { bd = along; best = f; }
     }
-    return best ? { key: best, size: 0.07, point: best.g.position.clone(), fire: () => this.boop(best) } : null;
+    return best ? { key: best, size: 0.07, gazeNear: true, point: best.g.position.clone(), fire: () => this.boop(best) } : null;
   }
 
   // reveal a firefly's colour; with two shown, keep the pair or let them fade back

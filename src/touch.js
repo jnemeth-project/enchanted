@@ -75,12 +75,14 @@ export class Touch {
       this.effects.seeds(it.center, 44);
       const mats = it.o.userData.mats || [];
       tweens.add(1.4, (k) => { for (const m of mats) if (m.name === 'Dandelion_Pappus' || m.name === 'Dandelion_Filament') { m.transparent = true; m.opacity = 1 - k; } });
-      if (it.seeds) { const p0 = it.seeds.position.clone(); tweens.add(9, (k) => { it.seeds.position.set(p0.x + k * 2.5, p0.y + k * 1.2, p0.z - k * 0.6); it.seeds.traverse((m) => { if (m.isMesh) { m.material.transparent = true; m.material.opacity = 1 - k; } }); }); }
+      it.regrow = 40; // new seeds after a while, so you can blow it again
+      if (it.seeds) { if (!it.seedHome) it.seedHome = it.seeds.position.clone(); const p0 = it.seedHome.clone(); tweens.add(9, (k) => { it.seeds.position.set(p0.x + k * 2.5, p0.y + k * 1.2, p0.z - k * 0.6); it.seeds.traverse((m) => { if (m.isMesh) { m.material.transparent = true; m.material.opacity = 1 - k; } }); }); }
     }
   }
 
   update(dt, input) {
     for (const it of this.items) {
+      if (it.away) { it.inside[0] = it.inside[1] = false; continue; } // being held or thrown
       it.cool = Math.max(0, it.cool - dt);
       if (input.mode === 'xr') {
         input.hands.forEach((h, hi) => {
@@ -89,11 +91,21 @@ export class Touch {
           const r = it.radius + 0.01;
           for (let k = 0; k < 5 && !inside; k++) if (h.tips[k].distanceTo(it.center) < r) inside = true;
           if (!inside && it.kind === 'fern' && h.palm.distanceTo(it.center) < r) inside = true;
+          if (!inside && it.kind === 'dandelion' && h.palm.distanceTo(it.center) < 0.22 && h.palmVel.length() > 0.5) inside = true; // a swoosh
           if (inside && !it.inside[hi]) {
             if (it.kind !== 'fern' || h.speed > 0.12) this._fire(it, h);
           }
           it.inside[hi] = inside;
         });
+      }
+      if (it.kind === 'dandelion' && it.blown && it.regrow !== undefined) {
+        it.regrow -= dt;
+        if (it.regrow <= 0) {
+          it.blown = false; it.regrow = undefined;
+          const mats = it.o.userData.mats || [];
+          tweens.add(2, (k) => { for (const m of mats) if (m.name === 'Dandelion_Pappus' || m.name === 'Dandelion_Filament') m.opacity = k; });
+          if (it.seeds && it.seedHome) { it.seeds.position.copy(it.seedHome); it.seeds.traverse((m) => { if (m.isMesh) m.material.opacity = 0; }); tweens.add(2, (k) => it.seeds.traverse((m) => { if (m.isMesh) m.material.opacity = k; })); }
+        }
       }
       if (it.kind === 'boop') {
         const x = it.spring.update(dt); it.flash *= Math.exp(-dt * 3.5);
@@ -123,6 +135,7 @@ export class Touch {
     const limit = wall ? wall.distance : Infinity;
     let best = null, bd = limit;
     for (const it of this.items) {
+      if (it.away) continue;
       let d = Infinity;
       if (it.kind === 'dandelion') {
         if (ray.distanceToPoint(it.center) < it.radius) d = ray.origin.distanceTo(it.center);

@@ -38,18 +38,13 @@ export class Twirls {
         if (inside && !it.inHand[i] && (!it.cool || it.cool <= 0)) {
           it.cool = 0.6; it.o.userData.spin += (Math.random() < 0.5 ? -1 : 1) * 3;
           if (this.effects) this.effects.sparkle(p.clone(), 0xc8fff0, 30, 0.12);
-          this.sound.chime(p, [784, 880, 988, 1175, 1319][Math.floor(Math.random() * 5)]);
         }
         it.inHand[i] = inside;
         if (!inside) continue;
         // how fast you are circling round the middle (radians a second), in the direction you move
         const w = (tmp.z * v.x - tmp.x * v.z) / (d2 + 0.02);
         it.o.userData.spin += THREE.MathUtils.clamp(w, -14, 14) * Math.min(1, dt * 5);
-        if (this.chimeT <= 0 && speed > 0.5) {
-          this.chimeT = 0.35;
-          this.sound.hush(p, 392 + Math.random() * 200);
-          if (this.effects) this.effects.sparkle(p, 0xd9f6ff, 10, 0.08);
-        }
+        if (this.chimeT <= 0 && speed > 0.5) { this.chimeT = 0.35; if (this.effects) this.effects.sparkle(p, 0xd9f6ff, 10, 0.08); }
       }
     });
     for (const it of this.items) {
@@ -92,14 +87,15 @@ export class Pebbles {
   }
 
   update(dt, input) {
-    // pick up: pinch near a resting pebble
-    input.hands.forEach((h) => {
+    // pick up: pinch near a resting pebble, or point at one and pinch: it flies up into your hand
+    input.hands.forEach((h, i) => {
       if (!h.present) return;
-      const held = this.list.find((pb) => pb.hand === h);
-      if (!held && h.pinching && !h._pebbleWas) {
+      const aim = input.aim && input.aim[i];
+      if (h.pinching && !h._pebbleWas && !h._holding) {
         let best = null, bd = 0.08;
         for (const pb of this.list) { if (pb.state !== 'rest') continue; const d = pb.o.position.distanceTo(h.pinchPoint); if (d < bd) { bd = d; best = pb; } }
-        if (best) { best.state = 'held'; best.hand = h; best.trail = []; this.sound.boop(best.o.position.clone(), 180); }
+        if (!best && aim) { let ad = 0.07; for (const pb of this.list) { if (pb.state !== 'rest') continue; const d = aim.ray.distanceToPoint(pb.o.position); if (d < ad && pb.o.position.distanceTo(aim.ray.origin) < 2.5) { ad = d; best = pb; } } if (best) best.fetch = 0; }
+        if (best) { best.state = 'held'; best.hand = h; best.trail = []; best.from = best.o.position.clone(); h._holding = best; this.sound.boop(best.o.position.clone(), 180); }
       }
       h._pebbleWas = h.pinching;
     });
@@ -108,10 +104,12 @@ export class Pebbles {
       pb.t += dt;
       if (pb.state === 'held') {
         const h = pb.hand;
-        if (!h.present) { pb.state = 'land'; pb.t = 0; pb.hand = null; continue; }
-        o.position.copy(h.pinchPoint);
+        if (!h.present) { pb.state = 'land'; pb.t = 0; pb.hand = null; h._holding = null; continue; }
+        if (pb.fetch !== undefined && pb.fetch < 1) { pb.fetch = Math.min(1, pb.fetch + dt / 0.25); o.position.copy(pb.from).lerp(h.pinchPoint, pb.fetch * pb.fetch); }
+        else { pb.fetch = undefined; o.position.copy(h.pinchPoint); }
         pb.trail.push({ p: h.pinchPoint.clone(), dt }); if (pb.trail.length > 6) pb.trail.shift();
         if (!h.pinching) {
+          h._holding = null; pb.fetch = undefined;
           // let go: it flies off with your hand's speed (a little extra, for fun)
           const a = pb.trail[0], b = pb.trail[pb.trail.length - 1], time = pb.trail.slice(1).reduce((s, x) => s + x.dt, 0) || dt;
           const v = b.p.clone().sub(a.p).divideScalar(time).multiplyScalar(1.35);
@@ -231,10 +229,10 @@ export class PotHint {
 export class DirtDrawing {
   constructor(scene, W, sound, effects) {
     this.sound = sound; this.effects = effects;
-    this.w = 1.0; this.d = 0.62; this.centre = new THREE.Vector3(0, 0, -0.55);
+    this.w = 0.62; this.d = 0.46; this.centre = new THREE.Vector3(0, 0, -0.5);
     // the drawing surface hugs the ground: a fine grid whose every point sits just on the path
     const ground = [W.byName.Ground].filter(Boolean), ray = new THREE.Raycaster();
-    const NX = 28, NZ = 18, geo = new THREE.PlaneGeometry(this.w, this.d, NX, NZ); geo.rotateX(-Math.PI / 2);
+    const NX = 24, NZ = 18, geo = new THREE.PlaneGeometry(this.w, this.d, NX, NZ); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position; this.NX = NX; this.NZ = NZ; this.hgt = new Float32Array(pos.count);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i) + this.centre.x, z = pos.getZ(i) + this.centre.z;
@@ -248,7 +246,11 @@ export class DirtDrawing {
     this.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, fog: false }));
     this.mesh.position.set(this.centre.x, 0, this.centre.z); this.mesh.renderOrder = 2;
     scene.add(this.mesh);
-    this.last = [null, null]; this.prevPalm = [null, null]; this.scratchT = 0; this.wipe = 0; this.inked = false;
+    this.last = [null, null]; this.prevPalm = [null, null]; this.prevHit = [null, null]; this.scratchT = 0; this.wipe = 0; this.inked = false;
+    this.rc = new THREE.Raycaster();
+    // a little glowing dot shows where a pointing hand would draw
+    this.dot = new THREE.Mesh(new THREE.CircleGeometry(0.008, 12), new THREE.MeshBasicMaterial({ color: 0xbff0ff, transparent: true, opacity: 0.8, depthWrite: false, fog: false }));
+    this.dot.rotation.x = -Math.PI / 2; this.dot.visible = false; this.dot.renderOrder = 3; scene.add(this.dot);
   }
 
   _groundAt(p) {
@@ -259,22 +261,39 @@ export class DirtDrawing {
 
   _uv(p) { return [((p.x - this.centre.x) / this.w + 0.5) * this.canvas.width, ((p.z - this.centre.z) / this.d + 0.5) * this.canvas.height]; }
 
+  _line(u0, v0, u, v, at) {
+    const g = this.g; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(14, 8, 4, 0.9)'; g.lineWidth = 20; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
+    g.strokeStyle = 'rgba(150, 235, 255, 0.6)'; g.lineWidth = 6; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
+    this.tex.needsUpdate = true; this.inked = true;
+    if (this.scratchT <= 0 && Math.hypot(u - u0, v - v0) > 2) { this.scratchT = 0.25; this.sound.rustle(at.clone(), 0.12); }
+  }
+
   update(dt, input) {
     this.scratchT = Math.max(0, this.scratchT - dt);
+    let dot = null;
+    // pointing at the dirt: pinch and move to draw; a quick sweep of the pointer across it wipes it clean
+    if (input.aim) input.aim.forEach((a, i) => {
+      const h = input.hands[i];
+      if (!a || (h && h._holding)) { this.prevHit[i] = null; return; }
+      this.rc.set(a.ray.origin, a.ray.direction); this.rc.far = 3;
+      const hit = this.rc.intersectObject(this.mesh)[0];
+      if (!hit) { this.prevHit[i] = null; return; }
+      dot = hit.point;
+      const pinching = h ? h.pinching : false;
+      const [u, v] = this._uv(hit.point), prev = this.prevHit[i];
+      if (pinching && prev && prev.pinching) this._line(prev.u, prev.v, u, v, hit.point);
+      if (!pinching && prev && this.inked && dt > 0 && hit.point.distanceTo(prev.p) / dt > 2.5 && this.wipe <= 0) { this.wipe = 1; this.sound.whoosh(hit.point); if (this.effects) this.effects.sparkle(hit.point, 0xd9f6ff, 18, 0.15); }
+      this.prevHit[i] = { u, v, p: hit.point.clone(), pinching };
+    });
+    this.dot.visible = !!dot; if (dot) this.dot.position.copy(dot).add(new THREE.Vector3(0, 0.003, 0));
     input.hands.forEach((h, i) => {
       if (!h.present) { this.last[i] = null; this.prevPalm[i] = null; return; }
       const tip = h.index, inside = Math.abs(tip.x - this.centre.x) < this.w / 2 && Math.abs(tip.z - this.centre.z) < this.d / 2;
       if (inside && tip.y < this._groundAt(tip) + 0.025) {
         const [u, v] = this._uv(tip), g = this.g;
-        if (this.last[i]) {
-          const [u0, v0] = this.last[i];
-          // a groove in the dirt, with a faint magical glow running along its bottom
-          g.lineCap = 'round'; g.lineJoin = 'round';
-          g.strokeStyle = 'rgba(14, 8, 4, 0.9)'; g.lineWidth = 20; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
-          g.strokeStyle = 'rgba(150, 235, 255, 0.6)'; g.lineWidth = 6; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
-          this.tex.needsUpdate = true; this.inked = true;
-          if (this.scratchT <= 0 && Math.hypot(u - u0, v - v0) > 2) { this.scratchT = 0.25; this.sound.rustle(tip.clone(), 0.12); }
-        }
+        // a groove in the dirt, with a faint magical glow running along its bottom
+        if (this.last[i]) this._line(this.last[i][0], this.last[i][1], u, v, tip);
         this.last[i] = [u, v];
       } else this.last[i] = null;
       // a swoosh: the whole hand sweeping fast and low over the dirt wipes it smooth
@@ -290,6 +309,76 @@ export class DirtDrawing {
       const g = this.g; g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 0, this.canvas.width, this.canvas.height); g.restore();
       this.tex.needsUpdate = true;
       if (this.wipe <= 0) { this.g.clearRect(0, 0, this.canvas.width, this.canvas.height); this.tex.needsUpdate = true; this.inked = false; this.wipe = 0; }
+    }
+  }
+}
+
+
+export class MushroomThrow {
+  constructor(touch, W, sound, effects) {
+    this.touch = touch; this.sound = sound; this.effects = effects; this.grounds = W.grounds; this.ray = new THREE.Raycaster();
+    this.list = touch.items.filter((it) => it.kind === 'boop').map((it) => ({ it, o: it.o, home: it.o.position.clone(), homeQ: it.o.quaternion.clone(), state: 'rest', v: new THREE.Vector3(), spin: new THREE.Vector3(), t: 0, hand: null, trail: [] }));
+  }
+
+  _groundY(p) {
+    this.ray.set(new THREE.Vector3(p.x, p.y + 1.5, p.z), new THREE.Vector3(0, -1, 0)); this.ray.far = 4;
+    const h = this.ray.intersectObjects(this.grounds, true)[0]; return h ? h.point.y : 0;
+  }
+
+  update(dt, input) {
+    input.hands.forEach((h, i) => {
+      if (!h.present) return;
+      if (h.pinching && !h._mushWas && !h._holding) {
+        let best = null, bd = Infinity;
+        for (const m of this.list) { if (m.state !== 'rest') continue; const d = m.it.center.distanceTo(h.pinchPoint); if (d < m.it.radius + 0.03 && d < bd) { bd = d; best = m; } }
+        const aim = input.aim && input.aim[i];
+        if (!best && aim) for (const m of this.list) { if (m.state !== 'rest') continue; if (aim.ray.distanceToPoint(m.it.center) < m.it.radius * 0.9 && m.it.center.distanceTo(aim.ray.origin) < 2.5) { best = m; break; } }
+        if (best) {
+          best.state = 'held'; best.hand = h; best.trail = []; best.fetch = 0; best.from = best.o.position.clone();
+          best.off = best.o.position.clone().sub(best.it.center); // hold it by its cap
+          best.it.away = true; h._holding = best; this.sound.boop(best.it.center, best.it.hz);
+        }
+      }
+      h._mushWas = h.pinching;
+    });
+    for (const m of this.list) {
+      const o = m.o; m.t += dt;
+      if (m.state === 'held') {
+        const h = m.hand;
+        if (!h.present) { h._holding = null; m.state = 'land'; m.t = 0; continue; }
+        const want = h.pinchPoint.clone().add(m.off);
+        if (m.fetch < 1) { m.fetch = Math.min(1, m.fetch + dt / 0.25); o.position.copy(m.from).lerp(want, m.fetch * m.fetch); } else o.position.copy(want);
+        m.trail.push({ p: h.pinchPoint.clone(), dt }); if (m.trail.length > 6) m.trail.shift();
+        if (!h.pinching) {
+          h._holding = null;
+          const a = m.trail[0], b = m.trail[m.trail.length - 1], time = m.trail.slice(1).reduce((s, x) => s + x.dt, 0) || dt;
+          m.v.copy(b.p).sub(a.p).divideScalar(time).multiplyScalar(1.3);
+          m.spin.set(Math.random() * 8 - 4, Math.random() * 8 - 4, Math.random() * 8 - 4);
+          m.state = 'fly'; m.t = 0; if (m.v.length() > 0.6) this.sound.whoosh(o.position.clone());
+        }
+      } else if (m.state === 'fly') {
+        m.v.y -= G * dt; o.position.addScaledVector(m.v, dt);
+        o.rotation.x += m.spin.x * dt; o.rotation.z += m.spin.z * dt;
+        const gy = this._groundY(o.position);
+        if (o.position.y <= gy) {
+          o.position.y = gy;
+          if (-m.v.y > 1.2) { this.sound.boop(o.position.clone(), m.it.hz * 0.7); m.v.y = -m.v.y * 0.3; m.v.x *= 0.5; m.v.z *= 0.5; m.spin.multiplyScalar(0.4); }
+          else { m.state = 'land'; m.t = 0; m.v.set(0, 0, 0); }
+        }
+        if (m.t > 10) { m.state = 'land'; m.t = 0; }
+      } else if (m.state === 'land') {
+        if (m.t > 3) { if (this.effects) this.effects.sparkle(o.position.clone(), 0xd9f6ff, 18, 0.12); m.state = 'home'; m.t = 0; m.moved = false; }
+      } else if (m.state === 'home') {
+        // it fades away where it fell and grows back where it was, so the forest stays tidy
+        const k = Math.min(1, m.t / 1.0), base = m.it.base;
+        if (k < 0.4) o.scale.copy(base).multiplyScalar(1 - k / 0.4);
+        else {
+          if (!m.moved) { o.position.copy(m.home); o.quaternion.copy(m.homeQ); m.moved = true; if (this.effects) this.effects.sparkle(m.it.center.clone(), 0xd9f6ff, 14, 0.1); }
+          o.scale.copy(base).multiplyScalar((k - 0.4) / 0.6);
+        }
+        m.it.scaleOverride = true;
+        if (k >= 1) { m.state = 'rest'; o.scale.copy(base); m.it.away = false; m.it.scaleOverride = false; }
+      }
     }
   }
 }

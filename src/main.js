@@ -16,7 +16,7 @@ import { Guide } from './guide.js';
 import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { SkyGames } from './skygames.js';
-import { Twirls, Pebbles, Crystals, PotHint, DirtDrawing } from './play.js';
+import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow } from './play.js';
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { tweens, clamp, glowTexture } from './util.js';
@@ -72,7 +72,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, potHint, dirt;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false;
 const phase = { name: 'loading', t: 0, rainT: 0, mode: null };
 const session = { t: 0, len: 600, warned: false };
 const remaining = () => session.len - session.t;
@@ -94,10 +94,11 @@ async function init() {
   menu = new Menu(scene, W, input, sound);
   twirls = new Twirls(W, sound, effects); pebbles = new Pebbles(W, sound, effects); crystals = new Crystals(W, sound, effects);
   dirt = new DirtDrawing(scene, W, sound, effects);
-  // the pot explains itself: a little star above it; look at it (or touch it) to read what it is for
-  potHint = new PotHint(scene, seed, glowTexture());
-  potHint.visibleWhen = () => phase.name !== 'rain' && phase.name !== 'goodnight' && phase.name !== 'loading' && !SKY(phase.mode);
-  potHint.onShow = () => say('Your magic mushroom pot\nAt the end of every session, rain falls\nCup your hands to catch the water\nthen tip it into the pot\nWater it each time you visit\nand a magic mushroom will grow', { width: 1.25, hold: 9 });
+  mushThrow = new MushroomThrow(touch, W, sound, effects);
+  // the magic mushroom pot only appears when the rain comes (it has nothing to do before then)
+  potGroup = new THREE.Group(); scene.add(potGroup);
+  for (const o of [W.magic.stump, W.byName.G_Shadow_SeedStump, W.magic.dust, ...(W.magic.stages || [])]) if (o) potGroup.attach(o);
+  potGroup.visible = false;
   menu.softEdges = !!options.soft;
   menu.onSoftEdges = (on) => { options.soft = on; renderer.xr.setFoveation(on ? 1 : 0); try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
   menu.volume = options.volume; menu.muted = !!options.muted;
@@ -109,9 +110,8 @@ async function init() {
   input.addPicker((r) => (SKY(phase.mode) ? sky.pick(r) : null), { ui: true });
   input.addPicker((r) => flies.pick(r));
   input.addPicker((r) => pebbles.pick(r));
-  input.addPicker((r) => potHint.pick(r));
   input.addPicker((r) => crystals.pick(r));
-  input.addPicker((r) => seed.pick(r));
+  input.addPicker((r) => (potShown ? seed.pick(r) : null));
   input.addPicker((r) => rain.pick(r));
   input.addPicker((r) => touch.pick(r));
   phase.firstNight = state.collection.length === 0 && state.nights === 1;
@@ -383,11 +383,20 @@ function toMainMenu() {
   }, 1600);
 }
 
+// the pot grows up out of the moss beside you, with a little sparkle
+function showPot() {
+  if (potShown) return; potShown = true; potGroup.visible = true;
+  const st = W.magic.stump; if (st) { const s0 = st.scale.clone(); st.scale.setScalar(0.001); tweens.add(1.6, (k) => st.scale.copy(s0).multiplyScalar(Math.max(0.001, 1 - Math.pow(1 - k, 3)))); }
+  effects.sparkle(seed.target.clone(), 0xffe2a8, 40, 0.25); sound.grow(seed.target, false);
+  say('A little pot has appeared beside you\nCatch the rain in your cupped hands\nand tip it in to grow a magic mushroom', { hold: 5.5 });
+}
+
 function startRain() {
   phase.name = 'rain'; phase.rainT = 0; phase.tellPour = undefined; phase.rainShown = false;
+  showPot();
   rain.start(); seed.invite = true;
   sleep.order.forEach((gi, i) => tweens.add(0.1, () => {}, { delay: i * 0.4, done: () => sleep.putToSleep(gi) }));
-  tweens.add(0.1, () => {}, { delay: 1.5, done: () => say('Cup your hands together\nto catch the rain', { hold: 4.5 }) });
+  tweens.add(0.1, () => {}, { delay: 6.5, done: () => say('Cup your hands together\nto catch the rain', { hold: 4.5 }) });
   guide.perch(rimPoint());
 }
 
@@ -468,7 +477,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, potHint, dirt });
+  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -500,11 +509,11 @@ function step(dt) {
     flies.update(dt, time, input);
     touch.update(dt, input);
     rain.update(dt, input);
-    seed.update(dt, input);
+    if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); pebbles.update(dt, input); crystals.update(dt, input); dirt.update(dt, input);
-    potHint.update(dt, time, input, eyeRay);
+    twirls.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); crystals.update(dt, input); dirt.update(dt, input);
+
     menu.update(dt, input);
     if (phase.name !== 'goodnight') session.t += dt;
     sky.ownDwell = !gaze.enabled;
