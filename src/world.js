@@ -116,7 +116,7 @@ export async function loadWorld(scene, onProgress) {
 
   // Index everything by its role.
   const W = {
-    root, byName: {}, clusters: [], dust: [], ribbons: [], boops: [], ferns: [], puffs: [], dandelions: [], dandelionSeeds: [],
+    root, byName: {}, clusters: [], dust: [], ribbons: [], pebbles: [], boops: [], ferns: [], puffs: [], dandelions: [], dandelionSeeds: [],
     magic: {}, dim: {}, grounds: [], sky: null, moon: {}, seat: new THREE.Vector3(),
   };
   const nodes = [];
@@ -127,6 +127,7 @@ export async function loadWorld(scene, onProgress) {
     if (n.startsWith('Cluster_')) W.clusters.push(o);
     else if (n.startsWith('G_FairyDust_')) W.dust.push(o);
     else if (n.startsWith('G_LightRibbon_')) W.ribbons.push(o);
+    else if (n.startsWith('G_ThrowPebble_')) W.pebbles.push(o);
     else if (n.startsWith('Boop_')) W.boops.push(o);
     else if (n.startsWith('Touch_Fern')) W.ferns.push(o);
     else if (n.startsWith('G_Puffball_')) W.puffs.push(o);

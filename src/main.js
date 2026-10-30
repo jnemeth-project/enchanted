@@ -16,6 +16,7 @@ import { Guide } from './guide.js';
 import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { SkyGames } from './skygames.js';
+import { Twirls, Pebbles } from './play.js';
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { tweens, clamp } from './util.js';
@@ -71,7 +72,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles;
 const phase = { name: 'loading', t: 0, rainT: 0, mode: null };
 const session = { t: 0, len: 600, warned: false };
 const remaining = () => session.len - session.t;
@@ -91,6 +92,7 @@ async function init() {
   flies = new Fireflies(scene, sleep, sound);
   rain = new Rain(scene, sound, effects, seed);
   menu = new Menu(scene, W, input, sound);
+  twirls = new Twirls(W, sound, effects); pebbles = new Pebbles(W, sound, effects);
   menu.volume = options.volume; menu.muted = !!options.muted;
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
   menu.onMainMenu = toMainMenu; menu.onSwap = swapMode;
@@ -99,6 +101,7 @@ async function init() {
   input.addPicker((r) => menu.pick(r), { ui: true });
   input.addPicker((r) => (SKY(phase.mode) ? sky.pick(r) : null), { ui: true });
   input.addPicker((r) => flies.pick(r));
+  input.addPicker((r) => pebbles.pick(r));
   input.addPicker((r) => seed.pick(r));
   input.addPicker((r) => rain.pick(r));
   input.addPicker((r) => touch.pick(r));
@@ -455,7 +458,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session });
+  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -490,6 +493,7 @@ function step(dt) {
     seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
+    twirls.update(dt, input); pebbles.update(dt, input);
     menu.update(dt, input);
     if (phase.name !== 'goodnight') session.t += dt;
     sky.ownDwell = !gaze.enabled;
