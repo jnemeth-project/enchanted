@@ -23,7 +23,7 @@ export class Captions {
   show(text, position, { width = 0.3, fadeIn = 1.2, hold = 2.8, fadeOut = 1.8, rise = 0.04 } = {}) {
     for (const old of this.live) tweens.add(0.6, (k) => { old.material.opacity = old.userData.o * (1 - k); }, { done: () => this._remove(old) });
     const { t, aspect } = textTexture(String(text).split('\n'));
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false }));
     s.renderOrder = 30; s.scale.set(width, width / aspect, 1); s.position.copy(position);
     this.scene.add(s); this.live = [s];
     const y0 = position.y;

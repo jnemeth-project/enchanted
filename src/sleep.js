@@ -78,6 +78,6 @@ export class Sleep {
     const k = 1 - this.shown;
     const D = this.W.dim;
     const set = (name, lo) => { const o = D[name]; if (o) setEmissiveScale(o.userData.mats, lo + (1 - lo) * k); };
-    set('LoneMushrooms', 0.2); set('Puffballs', 0.3); set('Crystals', 0.45); set('GlowRocks', 0.4); set('Spores', 0.1);
+    set('LoneMushrooms', 0.2); set('Puffballs', 0.3); set('Crystals', 0.45); set('PuffballsFar', 0.3); set('GlowRocks', 0.4); set('Spores', 0.1);
   }
 }

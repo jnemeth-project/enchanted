@@ -41,11 +41,14 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
 renderer.xr.setFoveation(1);
+// Filmic tone mapping: deeper darks and glows that roll off softly instead of washing out
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.25;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05040b);
-scene.fog = new THREE.FogExp2(0x0b0816, 0.018);
+scene.fog = new THREE.FogExp2(0x080611, 0.015);
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.03, 400);
 const rig = new THREE.Group(); scene.add(rig); rig.add(camera);
 camera.position.copy(EYE);

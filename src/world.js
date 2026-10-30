@@ -138,7 +138,7 @@ export async function loadWorld(scene, onProgress) {
   for (const o of [...W.clusters, ...W.dust, ...W.ribbons, ...W.boops, ...W.dandelions]) o.userData.mats = ownMaterials(o);
   for (const o of W.dust) o.userData.mats.forEach((m) => shaderMats.push(m));
   for (const o of W.ribbons) o.userData.mats.forEach((m) => shaderMats.push(m));
-  for (const n of ['LoneMushrooms', 'Crystals', 'GlowRocks', 'Spores']) { const o = get(n); if (o) { W.dim[n] = o; o.userData.mats = ownMaterials(o); } }
+  for (const n of ['LoneMushrooms', 'Crystals', 'GlowRocks', 'Spores', 'PuffballsFar']) { const o = get(n); if (o) { W.dim[n] = o; o.userData.mats = ownMaterials(o); } }
   const puffMats = []; // all puffballs dim together
   const shared = new Map();
   for (const p of W.puffs) p.traverse((m) => { if (m.isMesh) { if (!shared.has(m.material)) { const c = m.material.clone(); c.userData.baseEmissive = c.emissiveIntensity; shared.set(m.material, c); puffMats.push(c); } m.material = shared.get(m.material); } });
@@ -164,9 +164,29 @@ export async function loadWorld(scene, onProgress) {
   W.moonLight = new THREE.DirectionalLight(0xc9d6ff, 0.4); scene.add(W.moonLight); scene.add(W.moonLight.target);
   applyMoonLight(W, moonPhase());
 
+  // The preview look, cheaply: light glows through the edges of every cap and from underneath,
+  // like wax with a lamp inside. It scales with each material's own glow, so dimming still works.
+  root.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) if (/^(Mushroom_|Puffball_)/.test(m.name || '')) glowThrough(m); });
+
   W.nodes = nodes;
   W.canopy = canopyOpener([get('Trees'), ...nodes.filter((o) => /^CanopyFill/.test(o.name))].filter(Boolean));
   return W;
+}
+
+function glowThrough(mat) {
+  if (mat.userData.glowThrough) return; mat.userData.glowThrough = true;
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      {
+        vec3 nV = normalize(vNormal); vec3 vV = normalize(vViewPosition);
+        float rim = pow(1.0 - abs(dot(nV, vV)), 2.2);
+        vec3 upV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+        float under = smoothstep(0.15, -0.75, dot(nV, upV));
+        totalEmissiveRadiance *= 1.0 + 1.3 * rim + 1.6 * under;
+      }`);
+  };
+  mat.customProgramCacheKey = () => 'glowThrough';
+  mat.needsUpdate = true;
 }
 
 // Stargazing: the canopy overhead opens. Leaves inside a widening circle around the zenith dissolve
