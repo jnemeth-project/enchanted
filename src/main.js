@@ -59,7 +59,7 @@ const desktop = new DesktopControls(renderer.domElement, camera, input);
 const guide = new Guide(scene);
 const gaze = new Gaze(scene, renderer, camera, input);
 const captions = new Captions(scene);
-const choice = new Choice(scene, sound);
+const choice = new Choice(scene, sound, () => eyeRay());
 const sky = new SkyGames(scene, sound, EYE, eyeRay, viewQuat);
 const SKY = (m) => m === 'count' || m === 'shapes';
 const GROW_WORDS = ['', 'it sprouts', 'it grows', 'it blooms'];
@@ -95,8 +95,8 @@ async function init() {
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
   menu.onMainMenu = toMainMenu; menu.onSwap = swapMode;
   menu.onVolume = (v, vol, muted) => { sound.setVolume(v); options.volume = vol; options.muted = muted; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
+  input.addPicker((r) => choice.pickRay(r), { ui: true }); // the lanterns come first: they float in front of the door
   input.addPicker((r) => menu.pick(r), { ui: true });
-  input.addPicker((r) => choice.pickRay(r), { ui: true });
   input.addPicker((r) => (SKY(phase.mode) ? sky.pick(r) : null), { ui: true });
   input.addPicker((r) => flies.pick(r));
   input.addPicker((r) => seed.pick(r));
@@ -204,14 +204,14 @@ function updatePhases(dt) {
   phase.t += dt;
   const P = phase.name;
   if (P === 'arrival') {
-    if (phase.t > 1.0 && !guide.group.visible) { guide.appear(sleep.homeOf(sleep.order[0])); guide.goTo(new THREE.Vector3(-0.3, 1.25, -0.75), { speed: 0.9 }); }
+    if (phase.t > 1.0 && !guide.group.visible) { guide.appear(sleep.homeOf(sleep.order[0])); guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 }); }
     if (JUST_SIT) { if (phase.t > 3) startMode('fireflies'); return; }
     if (!TUTORIAL) { if (phase.t > 4) askChoice(); return; }
     // tutorial step 1: the butterfly boops a mushroom, the words say what to do
     const b = touch.items.find((it) => it.kind === 'boop');
     if (phase.t > 2.2 && touch.count === 0 && b && guide.mode !== 'tap') guide.tap(b.center, () => { b.flash = Math.max(b.flash, 0.6); sound.boop(b.center, b.hz); });
     if (phase.t > 2.6 && !phase.saidBoop) { phase.saidBoop = true; say('Boop the mushrooms\nEach one has its own note'); }
-    if (touch.count > 0 && guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.35, 1.3, -0.8), { orbit: 0.08, speed: 0.9 });
+    if (touch.count > 0 && guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.35, 1.0, -0.8), { orbit: 0.08, speed: 0.9 });
     if ((touch.count >= 2 && phase.t > 7) || phase.t > 14) askChoice();
   } else if (P === 'fireflies') {
     // the butterfly shows the first boop on a firefly, and again if nothing happens for a while
@@ -226,7 +226,7 @@ function updatePhases(dt) {
         say('Boop two fireflies\nthat share a colour', { hold: 4 });
         guide.tap(a.g.position.clone(), () => {
           flies.boop(a);
-          guide.tap(b.g.position.clone(), () => { flies.boop(b); state.memoryShown = true; saveState(state); guide.twirl(() => guide.goTo(new THREE.Vector3(-0.8, 1.02, -0.8), { orbit: 0.05, speed: 0.9 })); });
+          guide.tap(b.g.position.clone(), () => { flies.boop(b); state.memoryShown = true; saveState(state); guide.twirl(() => guide.goTo(new THREE.Vector3(-0.8, 0.72, -0.8), { orbit: 0.05, speed: 0.9 })); });
         });
       }
     }
@@ -260,8 +260,8 @@ function updatePhases(dt) {
 function askChoice() {
   if (phase.name === 'choose') return;
   phase.name = 'choose'; phase.t = 0;
-  guide.goTo(new THREE.Vector3(0, 1.32, -0.62), { orbit: 0.05, speed: 0.8 });
-  say('What would you like tonight?\nTouch one to choose', { hold: 3.2 });
+  guide.goTo(new THREE.Vector3(0, 1.3, -1.3), { orbit: 0.05, speed: 0.8 });
+  say('What would you like tonight?\nPoint and pinch, or look at one', { hold: 3.2 });
   tweens.add(0.1, () => {}, { delay: 1.6, done: () => choice.show([
     { key: 'fireflies', title: 'Firefly memory', sub: 'find the matching colours\nand water your mushroom', color: 0xd8ff7a },
     { key: 'count', title: 'Counting stars', sub: 'lie back and count\nthe stars home', color: 0xbfd2ff },
@@ -274,7 +274,7 @@ function startMode(mode) {
   const skyWasOpen = SKY(phase.mode);
   phase.mode = mode; phase.t = 0; phase.lastOutAt = 0; phase.shownOnce = false; phase.showing = false; phase.saidFlies = false; phase.wrapping = false;
   menu.mode = mode;
-  if (guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.42, 1.3, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
+  if (guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
   if (mode === 'fireflies') {
     phase.name = 'fireflies';
     input.farHands = false;
@@ -305,13 +305,13 @@ function startMode(mode) {
 
     // if you lie down, the forest follows: re-centre once you have settled
     for (const d of [4, 10]) tweens.add(0.1, () => {}, { delay: d, done: () => { if (renderer.xr.isPresenting) recenter(); } });
-    guide.goTo(new THREE.Vector3(0.3, 1.9, -0.6), { orbit: 0.1, speed: 0.6 });
+    guide.goTo(new THREE.Vector3(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 });
   }
 }
 
 function onPairFound() {
   // your first pair (after the butterfly's): a little twirl of joy
-  if (flies.matched === 2 && !phase.praised) { phase.praised = true; if (guide.mode === 'hover') guide.twirl(() => guide.goTo(new THREE.Vector3(-0.8, 1.02, -0.8), { orbit: 0.05, speed: 0.9 })); }
+  if (flies.matched === 2 && !phase.praised) { phase.praised = true; if (guide.mode === 'hover') guide.twirl(() => guide.goTo(new THREE.Vector3(-0.8, 0.72, -0.8), { orbit: 0.05, speed: 0.9 })); }
   if (flies.pairs > 5 && flies.matched === flies.pairs - 1) say('One pair left', { hold: 2 });
 }
 
@@ -395,7 +395,7 @@ function goodnight() {
   seed.invite = false;
   // the butterfly says goodbye: it bows in front of you, then drifts up toward the moon with a trail of light
   const sky = EYE.clone().addScaledVector(W.moonDir || new THREE.Vector3(0, 0.9, -0.4), 22);
-  const front = SKY(phase.mode) ? ahead(0.5, 0) : new THREE.Vector3(0.05, 1.12, -0.42);
+  const front = SKY(phase.mode) ? ahead(0.5, 0) : new THREE.Vector3(0.05, 0.82, -0.42);
   tweens.add(0.1, () => {}, { delay: 2, done: () => guide.farewell(front, sky, nightComplete) });
 }
 
@@ -410,12 +410,12 @@ function nightComplete() {
 function sleepNext() { const G = sleep.order.length; if (phase.slept < G) sleep.putToSleep(sleep.order[phase.slept++]); }
 function onSkyCount(n) {
   if (n % 3 === 0) sleepNext();
-  if (n === 1) guide.twirl(() => guide.goTo(new THREE.Vector3(0.3, 1.9, -0.6), { orbit: 0.1, speed: 0.6 }));
+  if (n === 1) guide.twirl(() => guide.goTo(new THREE.Vector3(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 }));
 }
 function onShapeDone(name, k) {
   say(name, { width: 0.8, hold: 3 });
   sleepNext(); sleepNext();
-  if (k === 1) guide.twirl(() => guide.goTo(new THREE.Vector3(0.3, 1.9, -0.6), { orbit: 0.1, speed: 0.6 }));
+  if (k === 1) guide.twirl(() => guide.goTo(new THREE.Vector3(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 }));
 }
 
 // every session ends with the rain for your mushroom, until it has fully grown
@@ -438,7 +438,7 @@ function rimPoint() {
 function showRainDemo() {
   const above = seed.target.clone().add(new THREE.Vector3(0, 0.13, 0));
   guide.fillRate = 0.9;
-  guide.rainDemo(new THREE.Vector3(0.04, 1.06, -0.3), above, rimPoint(), () => {
+  guide.rainDemo(new THREE.Vector3(0.04, 0.76, -0.3), above, rimPoint(), () => {
     phase.demoEnd = phase.rainT;
     if (phase.firstNight && seed.state.stage === 0) seed.grow(); else seed.receiveWater(0);
   });

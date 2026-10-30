@@ -7,7 +7,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
-export const EYE = new THREE.Vector3(0, 1.2, 0);
+export const EYE = new THREE.Vector3(0, 0.9, 0); // sitting on the forest floor, not on a chair
 export const shaderMats = []; // every material with a `time` uniform
 
 const twinkleVS = `

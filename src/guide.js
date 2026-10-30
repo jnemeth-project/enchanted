@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { glowTexture, damp } from './util.js';
 
-const EYE = new THREE.Vector3(0, 1.2, 0);
+const EYE = new THREE.Vector3(0, 0.9, 0);
 const TRAIL = 48;
 
 function wingTexture() {

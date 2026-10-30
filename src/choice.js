@@ -15,28 +15,31 @@ function label(title, sub) {
   return { t, aspect: W / H };
 }
 
+// the lanterns float well out in front of you (not in your lap), and are drawn larger to match
+const DIST = 1.35, S = 1.85, Y = 0.98, SPREAD = THREE.MathUtils.degToRad(28);
+
 export class Choice {
-  constructor(scene, sound) {
-    this.scene = scene; this.sound = sound; this.group = new THREE.Group(); this.group.visible = false; scene.add(this.group);
+  constructor(scene, sound, eyeRay = null) {
+    this.scene = scene; this.sound = sound; this.eyeRay = eyeRay; this.group = new THREE.Group(); this.group.visible = false; scene.add(this.group);
     this.options = []; this.onPick = null; this.k = 0; this.active = false;
   }
 
   // opts: [{ key, title, sub, color }]
   show(opts) {
     this.group.clear(); this.options = [];
-    const xs = opts.length === 2 ? [-0.2, 0.2] : opts.map((_, i) => (i - (opts.length - 1) / 2) * 0.38);
     opts.forEach((o, i) => {
-      const at = new THREE.Vector3(xs[i], 1.08, -0.48);
+      const a = (i - (opts.length - 1) / 2) * SPREAD * (opts.length === 2 ? 1.2 : 1);
+      const at = new THREE.Vector3(Math.sin(a) * DIST, Y, -Math.cos(a) * DIST);
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: o.color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-      halo.scale.setScalar(0.22); halo.position.copy(at);
+      halo.scale.setScalar(0.22 * S); halo.position.copy(at);
       const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-      core.scale.setScalar(0.06); core.position.copy(at);
+      core.scale.setScalar(0.06 * S); core.position.copy(at);
       const { t, aspect } = label(o.title, o.sub);
       const text = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, opacity: 0, depthWrite: false }));
-      const w = 0.3; text.scale.set(w, w / aspect, 1); const tw = w, th = w / aspect; text.position.copy(at).add(new THREE.Vector3(0, -0.1, 0));
+      const w = 0.3 * S; text.scale.set(w, w / aspect, 1); const tw = w, th = w / aspect; text.position.copy(at).add(new THREE.Vector3(0, -0.1 * S, 0));
       halo.renderOrder = core.renderOrder = 25; text.renderOrder = 26;
       this.group.add(halo, core, text);
-      this.options.push({ ...o, at, halo, core, text, tw, th, hot: 0, inside: [false, false] });
+      this.options.push({ ...o, at, halo, core, text, tw, th, hot: 0, inside: [false, false], open: false });
     });
     this.group.visible = true; this.active = true; this.k = 0;
     // nothing can be chosen straight away: wait a moment, and until hands and eyes have moved off whatever they rested on
@@ -53,7 +56,10 @@ export class Choice {
   update(dt, time, input) {
     if (!this.group.visible) return;
     this.armT = (this.armT || 0) + dt;
-    if (!this.armed && this.armT > 1.8) this.armed = true;
+    if (!this.armed && this.armT > 2.2) this.armed = true;
+    // whatever your eyes were resting on when the lanterns appeared can't be chosen until you look away from it
+    const eye = this.eyeRay ? this.eyeRay() : null;
+    if (this.armed) for (const o of this.options) if (!o.open && !(eye && this._rayHits(o, eye))) o.open = true;
     for (const o of this.options) {
       let hot = 0;
       if (this.active) input.hands.forEach((h, hi) => {
@@ -72,36 +78,37 @@ export class Choice {
       o.core.material.opacity = this.k * 0.9;
       o.text.material.opacity = this.k * (0.85 + 0.15 * o.hot);
       o.text.scale.set(o.tw * (1 + 0.06 * o.hot), o.th * (1 + 0.06 * o.hot), 1);
-      o.halo.scale.setScalar(0.22 * (1 + 0.35 * o.hot));
-      o.halo.position.y = o.core.position.y = o.at.y + Math.sin(time * 0.8 + o.at.x * 5) * 0.008;
+      o.halo.scale.setScalar(0.22 * S * (1 + 0.35 * o.hot));
+      o.halo.position.y = o.core.position.y = o.at.y + Math.sin(time * 0.8 + o.at.x * 5) * 0.008 * S;
     }
   }
 
   pick(o) {
-    if (!this.active || !this.armed) return;
+    if (!this.active || !this.armed || !o.open) return;
     this.active = false;
     this.sound.boop(o.at, 164.81);
-    tweens.add(0.6, (k) => { o.halo.scale.setScalar(0.16 * (1.35 + k)); });
+    tweens.add(0.6, (k) => { o.halo.scale.setScalar(0.16 * S * (1.35 + k)); });
     this.hide();
     if (this.onPick) this.onPick(o.key);
   }
 
   pickRay(ray) {
     if (!this.active) return null;
-    for (const o of this.options) if (this._rayHits(o, ray)) return { key: o, size: 0.22, point: this._centre(o), fire: () => this.pick(o) };
+    if (!this.armed) return null;
+    for (const o of this.options) if (o.open && this._rayHits(o, ray)) return { key: o, size: 0.22 * S, dwell: 2.2, point: this._centre(o), fire: () => this.pick(o) };
     return null;
   }
 
   // each option is a soft box around its light and its words
-  _centre(o) { return o.at.clone().add(new THREE.Vector3(0, -0.06, 0)); }
+  _centre(o) { return o.at.clone().add(new THREE.Vector3(0, -0.06 * S, 0)); }
   _inBox(o, p, pad) {
     const c = this._centre(o);
-    return Math.abs(p.x - c.x) < 0.16 + pad && Math.abs(p.y - c.y) < 0.12 + pad && Math.abs(p.z - c.z) < 0.09 + pad;
+    return Math.abs(p.x - c.x) < 0.16 * S + pad && Math.abs(p.y - c.y) < 0.12 * S + pad && Math.abs(p.z - c.z) < 0.09 * S + pad;
   }
   _rayHits(o, ray) {
     const c = this._centre(o), t = c.clone().sub(ray.origin).dot(ray.direction);
     if (t <= 0) return false;
     const p = ray.origin.clone().addScaledVector(ray.direction, t);
-    return Math.abs(p.x - c.x) < 0.16 && Math.abs(p.y - c.y) < 0.12;
+    return Math.abs(p.x - c.x) < 0.16 * S && Math.abs(p.y - c.y) < 0.12 * S;
   }
 }
