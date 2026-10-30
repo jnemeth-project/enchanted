@@ -19,9 +19,9 @@ On the start screen, choose how long you'd like to stay: 5, 10, 15 or 20 minutes
 
 - **Stargazing.** The trees overhead part and the sky opens. Lie back and enjoy: point at a star and pinch, and it goes to sleep. When the last star sleeps and there's still time, a new sky of stars wakes up.
 
-**Getting out, and options.** On the big tree to your right there's a small glowing door marked *Main menu*: point at it and pinch (or look at it, or click it) to go back to the start screen at any time. Above it hangs an old shop sign marked *Options*: volume, mute, and swapping between the two activities.
+**Getting out, and options.** Built into the big tree to your right (modelled in Blender like the rest of the forest) is a little wooden door with lanterns, marked *Main menu*: point at it and pinch (or look at it, or click it) to go back to the start screen at any time. Above it hangs an old shop sign marked *Options*: volume, mute, and swapping between the two activities.
 
-![The options panel, with the Main menu door and the Options sign on the tree](docs/options.jpg)
+![The Main menu door and the Options sign built into the tree](docs/door.jpg)
 
 ![Stargazing: the canopy has opened, the moon and a few bright sleepy stars overhead](docs/stargazing.jpg)
 
