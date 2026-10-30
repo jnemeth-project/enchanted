@@ -249,7 +249,7 @@ export class DirtDrawing {
     this.last = [null, null]; this.prevPalm = [null, null]; this.prevHit = [null, null]; this.scratchT = 0; this.wipe = 0; this.inked = false;
     this.rc = new THREE.Raycaster();
     // a little glowing dot shows where a pointing hand would draw
-    this.dot = new THREE.Mesh(new THREE.CircleGeometry(0.008, 12), new THREE.MeshBasicMaterial({ color: 0xbff0ff, transparent: true, opacity: 0.8, depthWrite: false, fog: false }));
+    this.dot = new THREE.Mesh(new THREE.CircleGeometry(0.008, 12), new THREE.MeshBasicMaterial({ color: 0xffe2b0, transparent: true, opacity: 0.85, depthWrite: false, fog: false }));
     this.dot.rotation.x = -Math.PI / 2; this.dot.visible = false; this.dot.renderOrder = 3; scene.add(this.dot);
   }
 
@@ -263,8 +263,10 @@ export class DirtDrawing {
 
   _line(u0, v0, u, v, at) {
     const g = this.g; g.lineCap = 'round'; g.lineJoin = 'round';
-    g.strokeStyle = 'rgba(14, 8, 4, 0.9)'; g.lineWidth = 20; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
-    g.strokeStyle = 'rgba(150, 235, 255, 0.6)'; g.lineWidth = 6; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
+    // a groove pressed into the earth: a soft lighter rim of pushed-up soil, a darker brown furrow in the middle
+    g.strokeStyle = 'rgba(122, 86, 52, 0.55)'; g.lineWidth = 26; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
+    g.strokeStyle = 'rgba(58, 36, 18, 0.95)'; g.lineWidth = 16; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
+    g.strokeStyle = 'rgba(30, 18, 8, 0.95)'; g.lineWidth = 7; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
     this.tex.needsUpdate = true; this.inked = true;
     if (this.scratchT <= 0 && Math.hypot(u - u0, v - v0) > 2) { this.scratchT = 0.25; this.sound.rustle(at.clone(), 0.12); }
   }
@@ -290,7 +292,7 @@ export class DirtDrawing {
     input.hands.forEach((h, i) => {
       if (!h.present) { this.last[i] = null; this.prevPalm[i] = null; return; }
       const tip = h.index, inside = Math.abs(tip.x - this.centre.x) < this.w / 2 && Math.abs(tip.z - this.centre.z) < this.d / 2;
-      if (inside && tip.y < this._groundAt(tip) + 0.025) {
+      if (inside && tip.y < this._groundAt(tip) + 0.06) {
         const [u, v] = this._uv(tip), g = this.g;
         // a groove in the dirt, with a faint magical glow running along its bottom
         if (this.last[i]) this._line(this.last[i][0], this.last[i][1], u, v, tip);

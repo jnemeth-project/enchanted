@@ -51,6 +51,15 @@ scene.fog = new THREE.FogExp2(0x0b0816, 0.018);
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.03, 400);
 const rig = new THREE.Group(); scene.add(rig); rig.add(camera);
 camera.position.copy(EYE);
+// "Soft edges" (an option for people sensitive to motion): the edges of your view softly darken,
+// so what moves at the side of your vision is calmer. Off by default: full, clear side vision.
+const vignette = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({
+  uniforms: { strength: { value: 0 } }, transparent: true, depthTest: false, depthWrite: false, fog: false,
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
+  fragmentShader: 'uniform float strength; varying vec2 vUv; void main(){ float r = length(vUv * 2. - 1.); float a = smoothstep(0.17, 0.42, r); gl_FragColor = vec4(0.0, 0.0, 0.01, a * strength); }',
+}));
+vignette.position.set(0, 0, -0.2); vignette.renderOrder = 999; vignette.frustumCulled = false; vignette.visible = false; camera.add(vignette);
+function setSoftEdges(on) { vignette.visible = on; vignette.material.uniforms.strength.value = on ? 0.92 : 0; renderer.xr.setFoveation(on ? 1 : 0); }
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
 const sound = new Sound();
@@ -63,7 +72,7 @@ const captions = new Captions(scene);
 const choice = new Choice(scene, sound, () => eyeRay());
 const sky = new SkyGames(scene, sound, EYE, eyeRay, viewQuat);
 const SKY = (m) => m === 'count' || m === 'shapes';
-const GROW_WORDS = ['', 'it sprouts', 'it grows', 'it blooms'];
+const GROW_WORDS = ['', 'Your little seed has sprouted\nIt will grow, day by day', 'Your magic mushroom is growing\nday by day', 'Your magic mushroom\nhas bloomed'];
 const abovePot = () => seed.target.clone().add(new THREE.Vector3(0, 0.42, 0));
 const state = loadState();
 const newNight = beginNight(state); saveState(state);
@@ -100,7 +109,7 @@ async function init() {
   for (const o of [W.magic.stump, W.byName.G_Shadow_SeedStump, W.magic.dust, ...(W.magic.stages || [])]) if (o) potGroup.attach(o);
   potGroup.visible = false;
   menu.softEdges = !!options.soft;
-  menu.onSoftEdges = (on) => { options.soft = on; renderer.xr.setFoveation(on ? 1 : 0); try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
+  menu.onSoftEdges = (on) => { options.soft = on; setSoftEdges(on); try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
   menu.volume = options.volume; menu.muted = !!options.muted;
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
   menu.onMainMenu = toMainMenu; menu.onSwap = swapMode;
@@ -160,7 +169,7 @@ function readOptions() {
   JUST_SIT = options.sit;
   if (JUST_SIT) TUTORIAL = false;
   gaze.enabled = options.look;
-  renderer.xr.setFoveation(options.soft ? 1 : 0);
+  setSoftEdges(!!options.soft);
   if (flies) flies.big = options.bright;
   if (touch) touch.highlight = options.bright ? 0.35 : 0;
 }
@@ -402,7 +411,7 @@ function startRain() {
 
 function onGrow(stage) {
   if (phase.firstNight && stage === 3 && !phase.carryScheduled) { phase.carryScheduled = true; scheduleCarry(); }
-  captions.show(GROW_WORDS[stage], abovePot(), { width: 0.52 });
+  captions.show(GROW_WORDS[stage], abovePot(), { width: 0.62, hold: 4 });
   seed.invite = phase.firstNight && stage < 3;
   guide.goTo(seed.target.clone().add(new THREE.Vector3(0, 0.3, 0)), { orbit: 0.12, speed: 0.9 });
 }
