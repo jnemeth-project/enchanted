@@ -57,7 +57,7 @@ export class Seed {
     if (this.dust) this.dust.visible = stage === 3;
   }
 
-  get canGrow() { return (this.demo || this.multiGrow || !wateredTonight(this.state)) && this.state.stage < 3; }
+  get canGrow() { return (this.demo || this.multiGrow || !this.grewThisSession) && this.state.stage < 3; } // one watering per session
 
   receiveWater(amount) {
     const glow = this.stageMats[this.state.stage];
@@ -70,7 +70,7 @@ export class Seed {
   grow() {
     this.water = 0;
     const st = this.state; st.stage = Math.min(3, st.stage + 1);
-    if (!this.demo) { st.wateredNight = nightKey(); saveState(st); }
+    if (!this.demo) { st.wateredNight = nightKey(); saveState(st); this.grewThisSession = true; }
     const big = st.stage === 3;
     this.sound.grow(this.target, big);
     this.effects.sparkle(this.target, big ? this.colorOf(st.color).getHex() : 0xcfe4ff, big ? 70 : 40, big ? 0.3 : 0.2);

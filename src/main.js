@@ -236,14 +236,16 @@ function updatePhases(dt) {
     // the butterfly shows it too, if no one has caught any rain yet
     if (!phase.rainShown && phase.rainT > 10 && rain.held < 0.1 && needsWater()) { phase.rainShown = true; showRainDemo(); }
     {
-      if (wateredTonight(state) && phase.wateredAt === undefined) phase.wateredAt = phase.rainT;
-      const done = remaining() < 22 || (!phase.firstNight && wateredTonight(state) && phase.rainT > phase.wateredAt + (seed.state.stage === 3 ? 12 : 8));
+      if (seed.grewThisSession && phase.wateredAt === undefined) phase.wateredAt = phase.rainT;
+      const done = remaining() < 22 || (!phase.firstNight && seed.grewThisSession && phase.rainT > phase.wateredAt + (seed.state.stage === 3 ? 12 : 8));
       if (done) goodnight();
       if (needsWater() && phase.rainShown && guide.mode === 'perch' && phase.rainT - (phase.demoEnd ?? 0) > 25) { phase.rainShown = false; }
     }
   } else if (P === 'sky') {
     if (JUST_SIT && phase.t > 8 && phase.t - (phase.autoStar ?? 0) > 5) { phase.autoStar = phase.t; sky.autoStep(); }
-    if (remaining() < 28) { say('The sky is asleep', { hold: 3 }); sky.stop(); goodnight(); }
+    // near the end: if your mushroom still needs water, the sky closes and the rain comes
+    if (remaining() < 80 && !phase.wrapping && needsWater()) wrapUpSky();
+    else if (remaining() < 28 && !phase.wrapping) { say('The sky is asleep', { hold: 3 }); sky.stop(); goodnight(); }
   }
   // the session: a gentle note near the end, then the night winds down in time
   if (P !== 'goodnight' && P !== 'loading') {
@@ -337,6 +339,16 @@ function wrapUpFireflies(finished = false) {
   say(finished ? 'Well remembered\nTime to rest now' : 'Time to rest now', { hold: 2.6 });
   tweens.add(0.1, () => {}, { delay: 3.5, done: () => { if (phase.name !== 'goodnight') { if (needsWater() && remaining() > 40) startRain(); else goodnight(); } } });
 }
+function wrapUpSky() {
+  phase.wrapping = true;
+  sky.stop();
+  say('Time to sit up\nThe rain is coming for your mushroom', { hold: 4 });
+  const from = W.canopy.uniform.value; tweens.add(6, (k) => W.canopy.set(from * (1 - k)));
+  // sitting back up: seat the player again once they have had a moment
+  tweens.add(0.1, () => {}, { delay: 4.5, done: () => { if (renderer.xr.isPresenting) recenter(); } });
+  tweens.add(0.1, () => {}, { delay: 5, done: () => { if (phase.name !== 'goodnight') startRain(); } });
+}
+
 // Options: swap to the other activity at any time
 function swapMode(mode) {
   if (phase.name === 'goodnight') return;
@@ -406,7 +418,8 @@ function onShapeDone(name, k) {
   if (k === 1) guide.twirl(() => guide.goTo(new THREE.Vector3(0.3, 1.9, -0.6), { orbit: 0.1, speed: 0.6 }));
 }
 
-function needsWater() { return phase.firstNight ? seed.state.stage < 3 : !wateredTonight(state); }
+// every session ends with the rain for your mushroom, until it has fully grown
+function needsWater() { return seed.state.stage < 3 && (phase.firstNight || !seed.grewThisSession); }
 
 // The butterfly lifts the grown mushroom out of the pot and sets it on the moss beside you.
 const BESIDE_YOU = new THREE.Vector3(-0.35, 0, -0.32);
