@@ -14,7 +14,9 @@ Lights Out is a seated, hands-only VR wind-down for Meta Quest and Meta VR Glass
 
 Your first visit starts with a one-minute tutorial. After that, each night you choose how to wind down:
 
-- **Fireflies.** Groups of ten fireflies drift out of the forest into your reach. Boop one and its light softly goes out; the forest around it settles to sleep. Then soft rain comes: cup your hands, catch it, and tip it into the terracotta pot to grow your mushroom.
+- **Fireflies, a gentle memory game.** 24 fireflies drift in and hover in an arc within reach, each secretly a colour. Boop one to see its colour (and hear its note), then another: if they match, the pair glows together and goes to sleep, and part of the forest sleeps with them. If not, they fade back and wait. No timer, no score, and if you're stuck a hidden pair briefly shimmers. Then soft rain comes: cup your hands, catch it, and tip it into the terracotta pot to grow your mushroom.
+
+![Fireflies hovering in an arc, a few showing their colours](docs/memory.jpg)
 - **Stargazing.** The trees overhead part and the sky opens. Lie back (or just look up), point at a star and pinch, and it goes to sleep. When the last star sleeps, so does the forest.
 
 ![Stargazing: the canopy has opened, the moon and a few bright sleepy stars overhead](docs/stargazing.jpg)
@@ -25,7 +27,7 @@ Nothing can go wrong. Nothing is timed. There are no menus floating in the air.
 
 ## Taught by a ghost butterfly, not by text
 
-A small butterfly made of soft light shows you each gesture instead of explaining it. It boops the first firefly out to show you how, twirls when you get it right, and cups its wings to gather rain before carrying it to the pot. Short glowing words appear where you're looking, so it's never unclear what to do.
+A small butterfly made of soft light shows you each gesture instead of explaining it. It boops the first matching pair of fireflies to show you how, twirls when you get it right, and cups its wings to gather rain before carrying it to the pot. Short glowing words appear where you're looking, so it's never unclear what to do.
 
 | Choose tonight's wind-down | Shows you how to catch the rain |
 | --- | --- |
@@ -46,7 +48,7 @@ A small butterfly made of soft light shows you each gesture instead of explainin
 
 | In the forest | With your hands | With gaze and pinch (Meta VR Glasses) |
 | --- | --- | --- |
-| Firefly | Boop it, pinch it | Look at it, pinch |
+| Firefly | Boop it to see its colour | Look at it, pinch |
 | Star (stargazing) | Point at it and pinch | Look at it, pinch |
 | Mushroom near you | Tap the cap: a deep, soft *boop*, and it slowly changes colour | Look, pinch |
 | Fern | Brush through it for a soft swoosh | Look, pinch |
@@ -89,7 +91,7 @@ Best with headphones.
 ```
 index.html        start screen and options
 src/main.js       the night: arrival, tucking in, rain, goodnight
-src/fireflies.js  fireflies and putting their lights out
+src/fireflies.js  the firefly memory game
 src/stars.js      stargazing: the sleepy stars and the opening canopy
 src/choice.js     choosing tonight's activity
 src/guide.js      the ghost butterfly

@@ -1,69 +1,91 @@
-// Fireflies: they drift in from the forest in a group of ten and hover within reach.
-// Boop one (touch it, pinch it, point at it or look at it) and its light gently goes out;
-// the little dark firefly floats down into the ferns to sleep. Nothing is squished.
+// Firefly memory: fireflies drift in and settle in a gentle arc within reach, all glowing the same
+// soft firefly gold. Each one is secretly a colour. Boop one and it shows its colour (and hums its
+// note); boop a second: if the colours match, the pair glows together and goes to sleep, and a part
+// of the forest sleeps with them. If not, they fade back to gold and wait. No timer, no score, no fail.
 import * as THREE from 'three';
 import { glowTexture, rand, clamp } from './util.js';
 
-const WARM = new THREE.Color(0.86, 1.0, 0.42);   // firefly yellow-green
+const HIDDEN = new THREE.Color(1.0, 0.9, 0.62);    // plain firefly glow: pale gold, so every colour stands out from it
 const CORE = new THREE.Color(1.0, 0.98, 0.8);
+// six soft colours that stay easy to tell apart at night, each with its own low note
+export const COLOURS = [
+  { c: new THREE.Color(1.0, 0.45, 0.78), hz: 164.81 },  // rose
+  { c: new THREE.Color(1.0, 0.62, 0.22), hz: 185.0 },   // amber
+  { c: new THREE.Color(0.35, 1.0, 0.72), hz: 220.0 },   // mint
+  { c: new THREE.Color(0.38, 0.7, 1.0), hz: 246.94 },   // sky
+  { c: new THREE.Color(0.68, 0.5, 1.0), hz: 293.66 },   // violet
+  { c: new THREE.Color(0.95, 0.96, 1.0), hz: 329.63 },  // moon white
+];
 
-// A loose cloud of spots in comfortable seated reach (player faces -Z), never too close together.
-function cloudSlots(n, rnd = Math.random) {
+// A gentle arc in front of you, at seated reach (player faces -Z): rows x columns, slightly staggered.
+function arcSlots(n) {
+  const rows = n > 12 ? 3 : 2, cols = Math.ceil(n / rows);
+  const span = n > 12 ? 104 : 64, R = n > 12 ? 0.56 : 0.5, ys = rows === 3 ? [0.86, 1.04, 1.22] : [0.94, 1.12];
   const out = [];
-  for (let tries = 0; out.length < n && tries < 2000; tries++) {
-    const p = new THREE.Vector3(-0.42 + rnd() * 0.84, 0.86 + rnd() * 0.5, -0.32 - rnd() * 0.3);
-    const ang = Math.atan2(p.x, -p.z); if (Math.abs(ang) > 0.85) continue;
-    if (out.every((q) => q.distanceTo(p) > 0.12)) out.push(p);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols && out.length < n; c++) {
+    const a = THREE.MathUtils.degToRad(-span / 2 + span * (c + (r % 2 ? 0.5 : 0.25)) / cols);
+    out.push(new THREE.Vector3(Math.sin(a) * R + rand(-0.012, 0.012), ys[r] + rand(-0.012, 0.012), -Math.cos(a) * R));
   }
   return out;
 }
+const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 export class Fireflies {
   constructor(scene, sleep, sound) {
     this.scene = scene; this.sleep = sleep; this.sound = sound;
-    this.list = []; this.batch = 0; this.batches = 1; this.batchSize = 10; this.outCount = 0;
-    this.fast = false; this.big = false;
+    this.list = []; this.pairs = 0; this.matched = 0; this.misses = 0; this.shown = [];
+    this.fast = false; this.big = false; this.active = false;
     this.bodyGeo = new THREE.SphereGeometry(1, 10, 8);
     this.bodyMat = new THREE.MeshBasicMaterial({ color: 0x1c1a12 });
-    this.onOut = null; this.onBatchDone = null;
+    this.onMatch = null; this.onMiss = null; this.onAllDone = null;
+    this.sinceMatch = 0;
   }
 
-  // plan how many groups of fireflies tonight, so each one tucks in its share of the forest
-  plan(batches, size = 10) { this.batches = batches; this.batchSize = size; this.batch = 0; this.outCount = 0; this.dismissed = false; }
+  get outCount() { return this.matched; }
+  get waiting() { return this.list.filter((f) => f.state === 'wait' && !f.held); }
+  get lit() { return this.list.filter((f) => f.state !== 'out'); }
+  get allDone() { return this.active && this.matched >= this.pairs; }
 
-  startBatch() {
-    const slots = cloudSlots(this.batchSize);
+  // pairs: how many pairs to find (24 fireflies = 12 pairs)
+  startMemory(pairs) {
+    this.clear();
+    this.pairs = pairs; this.matched = 0; this.misses = 0; this.shown = []; this.active = true; this.sinceMatch = 0; this.doneFired = false;
+    const n = pairs * 2;
+    const slots = shuffle(arcSlots(n));
+    const colourOf = []; for (let p = 0; p < pairs; p++) colourOf.push(p % COLOURS.length, p % COLOURS.length);
+    shuffle(colourOf);
     const homes = this.sleep.order.map((gi) => this.sleep.homeOf(gi));
     slots.forEach((to, k) => {
-      const from = homes[(this.batch * 3 + k) % homes.length].clone().add(new THREE.Vector3(rand(-0.6, 0.6), rand(0, 0.8), rand(-0.6, 0.6)));
-      this._spawn(from, to, k * (this.fast ? 0.12 : 0.35), this.batch * this.batchSize + k);
+      const from = homes[k % homes.length].clone().add(new THREE.Vector3(rand(-0.6, 0.6), rand(0, 0.8), rand(-0.6, 0.6)));
+      this._spawn(from, to, k * (this.fast ? 0.06 : 0.14), colourOf[k]);
     });
-    this.batch++;
   }
 
-  _spawn(from, to, delay, index) {
+  _spawn(from, to, delay, ci) {
     const g = new THREE.Group();
     const body = new THREE.Mesh(this.bodyGeo, this.bodyMat); body.scale.set(0.0045, 0.0045, 0.009); body.visible = false; g.add(body);
-    const k = this.big ? 1.35 : 1;
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: WARM, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-    halo.scale.setScalar(0.085 * k); halo.renderOrder = 4; g.add(halo);
-    const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: CORE, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-    core.scale.setScalar(0.022 * k); core.renderOrder = 4; g.add(core);
+    const k = this.big ? 1.3 : 1;
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: HIDDEN.clone(), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.setScalar(0.1 * k); halo.renderOrder = 4; g.add(halo);
+    const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: CORE.clone(), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    core.scale.setScalar(0.024 * k); core.renderOrder = 4; g.add(core);
     g.position.copy(from); g.visible = false; this.scene.add(g);
     const mid = from.clone().lerp(to, 0.5).add(new THREE.Vector3(rand(-0.8, 0.8), rand(0.4, 1.2), rand(-0.5, 0.5)));
-    const total = this.batches * this.batchSize;
-    const gi = this.sleep.order[Math.min(this.sleep.order.length - 1, Math.floor(index * this.sleep.order.length / total))];
     this.list.push({
-      g, body, halo, core, from, mid, to, gi, t: -delay, dur: this.fast ? rand(2.2, 2.8) : clamp(from.distanceTo(to) / 2.2, 3.5, 7),
-      state: 'fly', light: 0, ph: Math.random() * 10, wait: 0, held: false, outT: 0, r: 0.045 * k,
+      g, body, halo, core, from, mid, to, ci, t: -delay, dur: this.fast ? rand(1.8, 2.4) : clamp(from.distanceTo(to) / 2.4, 3, 6),
+      state: 'fly', light: 0, ph: Math.random() * 10, reveal: 0, hint: 0, outT: 0, held: false, inside: [false, false], r: 0.045 * k,
     });
   }
 
-  get lit() { return this.list.filter((f) => f.state === 'fly' || f.state === 'wait'); }
-  get waiting() { return this.list.filter((f) => f.state === 'wait' && !f.held); }
-  get allDone() { return this.batch >= this.batches && this.lit.length === 0; }
-
   update(dt, time, input) {
+    if (this.active && !this.allDone) this.sinceMatch += dt;
+    // a gentle hint if you have been searching for a while: one hidden pair shimmers its colour briefly
+    if (this.active && !this.allDone && (this.sinceMatch > 45 || this.misses >= 4) && !this.list.some((f) => f.hint > 0)) {
+      const hidden = this.list.filter((f) => f.state === 'wait');
+      const a = hidden[Math.floor(Math.random() * hidden.length)];
+      const b = a && hidden.find((f) => f !== a && f.ci === a.ci);
+      if (a && b) { a.hint = b.hint = 1.6; this.misses = 0; this.sinceMatch = 20; }
+    }
     for (let i = this.list.length - 1; i >= 0; i--) {
       const f = this.list[i];
       if (f.state === 'fly') {
@@ -73,67 +95,106 @@ export class Fireflies {
         f.g.position.copy(f.from).multiplyScalar((1 - e) * (1 - e)).addScaledVector(f.mid, 2 * (1 - e) * e).addScaledVector(f.to, e * e);
         f.light = Math.min(1, f.t / 0.8);
         if (u >= 1) f.state = 'wait';
-        if (u > 0.7) this._touch(f, input);
-      } else if (f.state === 'wait') {
-        f.wait += dt;
-        if (f.wait > 20 && !f.nudged) { f.nudged = true; f.to.lerp(new THREE.Vector3(0, 1.02, -0.3), 0.4); } // drift a little closer if missed
+      } else if (f.state === 'wait' || f.state === 'shown' || f.state === 'pair') {
+        // they hover almost still, so you can remember where each colour was
         if (!f.held) {
-          const goal = f.to.clone().add(new THREE.Vector3(Math.sin(time * 0.6 + f.ph) * 0.035, Math.sin(time * 0.9 + f.ph * 1.7) * 0.025, Math.cos(time * 0.5 + f.ph) * 0.02));
-          f.g.position.lerp(goal, 1 - Math.exp(-2.2 * dt));
+          const goal = f.to.clone().add(new THREE.Vector3(Math.sin(time * 0.5 + f.ph) * 0.008, Math.sin(time * 0.8 + f.ph * 1.7) * 0.01, 0));
+          f.g.position.lerp(goal, 1 - Math.exp(-3 * dt));
         }
-        this._touch(f, input);
+        if (f.state === 'wait') this._touch(f, input);
+        if (f.state === 'pair') {
+          // the matched pair glows together, rises a little, then goes to sleep
+          f.outT += dt;
+          if (f.outT > 1.1) { f.state = 'out'; f.outT = 0; }
+        }
       } else if (f.state === 'out') {
-        // the light fades, then the dark little firefly floats down and away to sleep
         f.outT += dt;
-        f.light = Math.max(0, 1 - f.outT / 0.9);
-        if (f.outT > 0.6) { f.g.position.y -= dt * 0.12; f.g.position.x += Math.sin(f.outT * 2 + f.ph) * dt * 0.03; f.g.position.z -= dt * 0.08; }
+        f.light = Math.max(0, 1 - f.outT / 1.1);
+        if (f.outT > 0.6) { f.g.position.y -= dt * 0.1; f.g.position.z -= dt * 0.06; }
         if (f.outT > 4) { this.scene.remove(f.g); f.halo.material.dispose(); f.core.material.dispose(); this.list.splice(i, 1); continue; }
       }
-      // a slow firefly glow: breathes, with an occasional brighter flash
-      const breath = 0.72 + 0.28 * Math.sin(time * 1.3 + f.ph);
-      const flash = Math.pow(Math.max(0, Math.sin(time * 0.37 + f.ph * 2.1)), 16);
-      const L = f.light * (breath + 0.45 * flash);
-      f.halo.material.opacity = 0.9 * L; f.core.material.opacity = Math.min(1, 1.2 * L);
-      f.halo.scale.setScalar(0.1 * (this.big ? 1.35 : 1) * (0.85 + 0.3 * L));
-      f.body.visible = f.state === 'out' && f.light < 0.5; // the little dark firefly only shows once its light is out
+      // colour: gold while hidden, its own colour while shown (or hinted)
+      const want = f.state === 'shown' || f.state === 'pair' || f.state === 'out' ? 1 : 0;
+      f.reveal += (want - f.reveal) * Math.min(1, dt * (want ? 8 : 2.5));
+      if (f.hint > 0) f.hint = Math.max(0, f.hint - dt);
+      const show = Math.max(f.reveal, f.hint > 0 ? Math.sin(Math.min(1, (1.6 - f.hint) / 1.6) * Math.PI) * 0.85 : 0);
+      f.halo.material.color.copy(HIDDEN).lerp(COLOURS[f.ci].c, show);
+      f.core.material.color.copy(CORE).lerp(COLOURS[f.ci].c.clone().lerp(new THREE.Color(1, 1, 1), 0.2), show);
+      const breath = 0.78 + 0.22 * Math.sin(time * 1.2 + f.ph);
+      const bright = f.state === 'pair' ? 1.5 : 1 + 0.35 * show;
+      const L = f.light * breath * bright;
+      f.halo.material.opacity = Math.min(1, (0.85 + 0.15 * show) * L); f.core.material.opacity = Math.min(1, 1.1 * L);
+      f.halo.scale.setScalar(0.1 * (this.big ? 1.3 : 1) * (0.9 + 0.8 * show + (f.state === 'pair' ? 0.3 : 0)));
+      f.core.scale.setScalar(0.024 * (this.big ? 1.3 : 1) * (1 + 0.6 * show));
+      f.body.visible = f.state === 'out' && f.light < 0.5;
     }
-    if (!this.dismissed && this.batch > 0 && this.batch <= this.batches && this.lit.length === 0 && !this._doneFired) {
-      this._doneFired = true; const b = this.batch;
-      if (this.onBatchDone) this.onBatchDone(b);
-    }
-    if (this.lit.length > 0) this._doneFired = false;
+    if (this.allDone && !this.doneFired && !this.list.some((f) => f.state === 'pair')) { this.doneFired = true; if (this.onAllDone) this.onAllDone(); }
   }
 
   _touch(f, input) {
     if (f.held) return;
     const c = f.g.position;
-    for (const h of input.hands) {
-      if (!h.present) continue;
+    input.hands.forEach((h, hi) => {
+      if (!h.present) { f.inside[hi] = false; return; }
       let hit = h.pinching && h.pinchPoint.distanceTo(c) < f.r * 1.4;
       for (let k = 1; k < 5 && !hit; k++) if (h.tips[k].distanceTo(c) < f.r) hit = true;
-      if (!hit && h.palm.distanceTo(c) < f.r * 1.1) hit = true;
-      if (hit) { this.putOut(f); return; }
-    }
+      if (hit && !f.inside[hi]) this.boop(f);
+      f.inside[hi] = hit;
+    });
   }
 
   pick(ray) {
     let best = null, bd = 1e9;
     for (const f of this.list) {
-      if ((f.state !== 'wait' && f.state !== 'fly') || f.t < 0 || f.held) continue;
+      if (f.state !== 'wait' || f.held) continue;
       const along = f.g.position.distanceTo(ray.origin);
-      if (ray.distanceToPoint(f.g.position) < Math.max(0.05, along * 0.035) && along < bd) { bd = along; best = f; }
+      if (ray.distanceToPoint(f.g.position) < Math.max(0.045, along * 0.03) && along < bd) { bd = along; best = f; }
     }
-    return best ? { key: best, size: 0.07, point: best.g.position.clone(), fire: () => this.putOut(best) } : null;
+    return best ? { key: best, size: 0.07, point: best.g.position.clone(), fire: () => this.boop(best) } : null;
   }
 
-  putOut(f) {
-    if (f.state === 'out') return;
-    f.state = 'out'; f.outT = 0; f.held = false; this.outCount++;
-    this.sound.hush(f.g.position, [196, 220, 246.94, 293.66, 329.63][this.outCount % 5]);
-    this.sleep.putToSleep(f.gi);
-    if (this.onOut) this.onOut(f);
+  // reveal a firefly's colour; with two shown, keep the pair or let them fade back
+  boop(f) {
+    if (f.state !== 'wait') return;
+    // a third touch while two different ones are still showing: tidy them away straight away
+    if (this.shown.length >= 2) this._hideShown();
+    f.state = 'shown'; f.held = false; this.shown.push(f);
+    this.sound.boop(f.g.position, COLOURS[f.ci].hz);
+    if (this.shown.length < 2) return;
+    const [a, b] = this.shown;
+    if (a.ci === b.ci) {
+      this.shown = [];
+      setTimeout(() => this._match(a, b), 450);
+    } else {
+      this.misses++;
+      if (this.onMiss) this.onMiss(a, b);
+      clearTimeout(this.hideT); this.hideT = setTimeout(() => this._hideShown(), 1700);
+    }
   }
 
-  // quietly let any still lit drift away (used when the night moves on)
-  dismiss() { for (const f of this.list) if (f.state !== 'out') { f.state = 'out'; f.outT = 0; } this.dismissed = true; }
+  _hideShown() { clearTimeout(this.hideT); for (const s of this.shown) if (s.state === 'shown') s.state = 'wait'; this.shown = []; }
+
+  _match(a, b) {
+    a.state = b.state = 'pair'; a.outT = b.outT = 0;
+    a.to.y += 0.04; b.to.y += 0.04;
+    this.matched++; this.misses = 0; this.sinceMatch = 0;
+    this.sound.hush(a.g.position.clone().lerp(b.g.position, 0.5), COLOURS[a.ci].hz * 0.75);
+    const G = this.sleep.order.length;
+    this.sleep.putToSleep(this.sleep.order[Math.min(G - 1, Math.floor((this.matched - 1) * G / this.pairs))]);
+    if (this.matched === this.pairs) this.sleep.order.forEach((gi) => this.sleep.putToSleep(gi));
+    if (this.onMatch) this.onMatch(a, b);
+  }
+
+  // for "Just sit": pairs find each other on their own, slowly
+  autoPair() {
+    const hidden = this.list.filter((f) => f.state === 'wait');
+    const a = hidden[0], b = a && hidden.find((f) => f !== a && f.ci === a.ci);
+    if (a && b) { this.boop(a); this.boop(b); }
+  }
+
+  // a matching partner for a given firefly (the butterfly uses this to show the game)
+  partnerOf(f) { return this.list.find((x) => x !== f && x.ci === f.ci && x.state === 'wait'); }
+
+  clear() { for (const f of this.list) this.scene.remove(f.g); this.list = []; this.shown = []; }
+  dismiss() { this.active = false; for (const f of this.list) if (f.state !== 'out') { f.state = 'out'; f.outT = 0; } }
 }
