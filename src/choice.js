@@ -33,10 +33,10 @@ export class Choice {
       core.scale.setScalar(0.06); core.position.copy(at);
       const { t, aspect } = label(o.title, o.sub);
       const text = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, opacity: 0, depthWrite: false }));
-      const w = 0.3; text.scale.set(w, w / aspect, 1); text.position.copy(at).add(new THREE.Vector3(0, -0.1, 0));
+      const w = 0.3; text.scale.set(w, w / aspect, 1); const tw = w, th = w / aspect; text.position.copy(at).add(new THREE.Vector3(0, -0.1, 0));
       halo.renderOrder = core.renderOrder = 25; text.renderOrder = 26;
       this.group.add(halo, core, text);
-      this.options.push({ ...o, at, halo, core, text, hot: 0, inside: [false, false] });
+      this.options.push({ ...o, at, halo, core, text, tw, th, hot: 0, inside: [false, false] });
     });
     this.group.visible = true; this.active = true; this.k = 0;
     tweens.add(1.4, (k) => { this.k = k; });
@@ -54,18 +54,20 @@ export class Choice {
       let hot = 0;
       if (this.active) input.hands.forEach((h, hi) => {
         if (!h.present) { o.inside[hi] = false; return; }
-        let inside = h.pinching && h.pinchPoint.distanceTo(o.at) < 0.08;
-        for (let k = 1; k < 5 && !inside; k++) if (h.tips[k].distanceTo(o.at) < 0.06) inside = true;
-        if (h.index.distanceTo(o.at) < 0.16) hot = 1;
+        // the whole option counts, the words as well as the light
+        let inside = h.pinching && this._inBox(o, h.pinchPoint, 0.03);
+        for (let k = 1; k < 5 && !inside; k++) if (this._inBox(o, h.tips[k], 0)) inside = true;
+        if (this._inBox(o, h.index, 0.08)) hot = 1;
         if (inside && !o.inside[hi]) this.pick(o);
         o.inside[hi] = inside;
       });
-      if (input.aim) for (const a of input.aim) if (a && a.ray.distanceToPoint(o.at) < 0.07) hot = 1;
+      if (input.aim) for (const a of input.aim) if (a && this._rayHits(o, a.ray)) hot = 1;
       o.hot += (hot - o.hot) * Math.min(1, dt * 6);
       const breath = 0.8 + 0.2 * Math.sin(time * 1.4 + o.at.x * 9);
       o.halo.material.opacity = this.k * (0.75 + 0.25 * o.hot) * breath;
       o.core.material.opacity = this.k * 0.9;
-      o.text.material.opacity = this.k;
+      o.text.material.opacity = this.k * (0.85 + 0.15 * o.hot);
+      o.text.scale.set(o.tw * (1 + 0.06 * o.hot), o.th * (1 + 0.06 * o.hot), 1);
       o.halo.scale.setScalar(0.22 * (1 + 0.35 * o.hot));
       o.halo.position.y = o.core.position.y = o.at.y + Math.sin(time * 0.8 + o.at.x * 5) * 0.008;
     }
@@ -82,7 +84,20 @@ export class Choice {
 
   pickRay(ray) {
     if (!this.active) return null;
-    for (const o of this.options) if (ray.distanceToPoint(o.at) < 0.075) return { key: o, size: 0.12, point: o.at.clone(), fire: () => this.pick(o) };
+    for (const o of this.options) if (this._rayHits(o, ray)) return { key: o, size: 0.22, point: this._centre(o), fire: () => this.pick(o) };
     return null;
+  }
+
+  // each option is a soft box around its light and its words
+  _centre(o) { return o.at.clone().add(new THREE.Vector3(0, -0.06, 0)); }
+  _inBox(o, p, pad) {
+    const c = this._centre(o);
+    return Math.abs(p.x - c.x) < 0.16 + pad && Math.abs(p.y - c.y) < 0.12 + pad && Math.abs(p.z - c.z) < 0.09 + pad;
+  }
+  _rayHits(o, ray) {
+    const c = this._centre(o), t = c.clone().sub(ray.origin).dot(ray.direction);
+    if (t <= 0) return false;
+    const p = ray.origin.clone().addScaledVector(ray.direction, t);
+    return Math.abs(p.x - c.x) < 0.16 && Math.abs(p.y - c.y) < 0.12;
   }
 }

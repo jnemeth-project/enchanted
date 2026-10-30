@@ -20,7 +20,7 @@ export const COLOURS = [
 // A gentle arc in front of you, at seated reach (player faces -Z): rows x columns, slightly staggered.
 function arcSlots(n) {
   const rows = n > 12 ? 3 : 2, cols = Math.ceil(n / rows);
-  const span = n > 12 ? 104 : 64, R = n > 12 ? 0.56 : 0.5, ys = rows === 3 ? [0.86, 1.04, 1.22] : [0.94, 1.12];
+  const span = n > 24 ? 124 : n > 12 ? 104 : n > 6 ? 80 : 64, R = n > 12 ? 0.56 : 0.52, ys = rows === 3 ? [0.86, 1.04, 1.22] : [0.94, 1.12];
   const out = [];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols && out.length < n; c++) {
     const a = THREE.MathUtils.degToRad(-span / 2 + span * (c + (r % 2 ? 0.5 : 0.25)) / cols);
@@ -37,7 +37,8 @@ export class Fireflies {
     this.fast = false; this.big = false; this.active = false;
     this.bodyGeo = new THREE.SphereGeometry(1, 10, 8);
     this.bodyMat = new THREE.MeshBasicMaterial({ color: 0x1c1a12 });
-    this.onMatch = null; this.onMiss = null; this.onAllDone = null;
+    this.onMatch = null; this.onMiss = null; this.onAllDone = null; this.onPeek = null; this.onPeekEnd = null;
+    this.peekT = 0; this.peekDur = 10; this.peeked = false;
     this.sinceMatch = 0;
   }
 
@@ -47,8 +48,9 @@ export class Fireflies {
   get allDone() { return this.active && this.matched >= this.pairs; }
 
   // pairs: how many pairs to find (24 fireflies = 12 pairs)
-  startMemory(pairs) {
+  startMemory(pairs, memorize = 10) {
     this.clear();
+    this.peekDur = memorize; this.peekT = 0; this.peeked = false;
     this.pairs = pairs; this.matched = 0; this.misses = 0; this.shown = []; this.active = true; this.sinceMatch = 0; this.doneFired = false;
     const n = pairs * 2;
     const slots = shuffle(arcSlots(n));
@@ -78,14 +80,18 @@ export class Fireflies {
   }
 
   update(dt, time, input) {
-    if (this.active && !this.allDone) this.sinceMatch += dt;
+    if (this.active && !this.allDone && this.ready) this.sinceMatch += dt;
     // a gentle hint if you have been searching for a while: one hidden pair shimmers its colour briefly
-    if (this.active && !this.allDone && (this.sinceMatch > 45 || this.misses >= 4) && !this.list.some((f) => f.hint > 0)) {
+    if (this.active && this.ready && !this.allDone && (this.sinceMatch > 45 || this.misses >= 4) && !this.list.some((f) => f.hint > 0)) {
       const hidden = this.list.filter((f) => f.state === 'wait');
       const a = hidden[Math.floor(Math.random() * hidden.length)];
       const b = a && hidden.find((f) => f !== a && f.ci === a.ci);
       if (a && b) { a.hint = b.hint = 1.6; this.misses = 0; this.sinceMatch = 20; }
     }
+    // once everyone has arrived: all the colours show for a while, so you can remember them
+    const arrived = this.list.length && this.list.every((f) => f.state !== 'fly');
+    if (this.active && arrived && !this.peeked) { this.peeked = true; this.peekT = this.peekDur; if (this.onPeek) this.onPeek(this.peekDur); }
+    if (this.peekT > 0) { this.peekT = Math.max(0, this.peekT - dt); if (this.peekT === 0) { this.sinceMatch = 0; if (this.onPeekEnd) this.onPeekEnd(); } }
     for (let i = this.list.length - 1; i >= 0; i--) {
       const f = this.list[i];
       if (f.state === 'fly') {
@@ -101,7 +107,7 @@ export class Fireflies {
           const goal = f.to.clone().add(new THREE.Vector3(Math.sin(time * 0.5 + f.ph) * 0.008, Math.sin(time * 0.8 + f.ph * 1.7) * 0.01, 0));
           f.g.position.lerp(goal, 1 - Math.exp(-3 * dt));
         }
-        if (f.state === 'wait') this._touch(f, input);
+        if (f.state === 'wait' && this.ready) this._touch(f, input);
         if (f.state === 'pair') {
           // the matched pair glows together, rises a little, then goes to sleep
           f.outT += dt;
@@ -117,7 +123,8 @@ export class Fireflies {
       const want = f.state === 'shown' || f.state === 'pair' || f.state === 'out' ? 1 : 0;
       f.reveal += (want - f.reveal) * Math.min(1, dt * (want ? 8 : 2.5));
       if (f.hint > 0) f.hint = Math.max(0, f.hint - dt);
-      const show = Math.max(f.reveal, f.hint > 0 ? Math.sin(Math.min(1, (1.6 - f.hint) / 1.6) * Math.PI) * 0.85 : 0);
+      const peek = this.peekT > 0 ? Math.min(1, this.peekT / 1.5, (this.peekDur - this.peekT) / 0.8) : 0; // fades in, holds, fades out
+      const show = Math.max(f.reveal, peek, f.hint > 0 ? Math.sin(Math.min(1, (1.6 - f.hint) / 1.6) * Math.PI) * 0.85 : 0);
       f.halo.material.color.copy(HIDDEN).lerp(COLOURS[f.ci].c, show);
       f.core.material.color.copy(CORE).lerp(COLOURS[f.ci].c.clone().lerp(new THREE.Color(1, 1, 1), 0.2), show);
       const breath = 0.78 + 0.22 * Math.sin(time * 1.2 + f.ph);
@@ -143,7 +150,11 @@ export class Fireflies {
     });
   }
 
+  // fireflies can be booped once the remembering time is over
+  get ready() { return this.peeked && this.peekT === 0; }
+
   pick(ray) {
+    if (!this.ready) return null;
     let best = null, bd = 1e9;
     for (const f of this.list) {
       if (f.state !== 'wait' || f.held) continue;
@@ -155,7 +166,7 @@ export class Fireflies {
 
   // reveal a firefly's colour; with two shown, keep the pair or let them fade back
   boop(f) {
-    if (f.state !== 'wait') return;
+    if (f.state !== 'wait' || !this.ready) return;
     // a third touch while two different ones are still showing: tidy them away straight away
     if (this.shown.length >= 2) this._hideShown();
     f.state = 'shown'; f.held = false; this.shown.push(f);

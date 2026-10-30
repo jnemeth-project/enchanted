@@ -12,11 +12,11 @@ Lights Out is a seated, hands-only VR wind-down for Meta Quest and Meta VR Glass
 
 ## A night in the forest
 
-Your first visit starts with a one-minute tutorial. After that, each night you choose how to wind down:
+Each night you choose how to wind down. The first time, the butterfly and a few glowing words show you how.
 
-- **Fireflies, a gentle memory game.** 24 fireflies drift in and hover in an arc within reach, each secretly a colour. Boop one to see its colour (and hear its note), then another: if they match, the pair glows together and goes to sleep, and part of the forest sleeps with them. If not, they fade back and wait. No timer, no score, and if you're stuck a hidden pair briefly shimmers. Then soft rain comes: cup your hands, catch it, and tip it into the terracotta pot to grow your mushroom.
+- **Firefly memory.** The forest's glow quiets down and fireflies drift in to hover within reach. For ten seconds each one shows its colour: remember them. Then they all turn gold. Boop one to see its colour (and hear its note), then another: if they match, the pair goes to sleep together, and part of the forest with them. If not, they fade back and wait. No timer, no score; if you're stuck, a hidden pair briefly shimmers. You start with 10 fireflies, and each night you finish a board, the next night brings two more pairs. Then soft rain comes: cup your hands, catch it, and tip it into the terracotta pot to grow your mushroom.
+![Ten fireflies showing their colours for you to remember](docs/memory.jpg)
 
-![Fireflies hovering in an arc, a few showing their colours](docs/memory.jpg)
 - **Stargazing.** The trees overhead part and the sky opens. Lie back (or just look up), point at a star and pinch, and it goes to sleep. When the last star sleeps, so does the forest.
 
 ![Stargazing: the canopy has opened, the moon and a few bright sleepy stars overhead](docs/stargazing.jpg)
@@ -77,7 +77,7 @@ The options are on the start screen and remembered between visits.
 - **Meta Quest 3 / 3S:** turn on hand tracking (*Settings → Movement tracking → Hand and body tracking*), open the link in the Meta Quest browser, put the controllers down, and tap **Enter the forest**. Sit comfortably with a little space around you.
 - **Meta VR Glasses:** works with gaze and pinch.
 - **On a computer:** choose **Look around on this screen**. Drag to look, click to touch.
-- **Tutorial again:** tap *Show me how to play* on the start screen, or add `?tutorial=1` to the link.
+- **See the butterfly's demonstrations again:** tap *Show me how to play* on the start screen, or add `?tutorial=1` to the link.
 
 Best with headphones.
 

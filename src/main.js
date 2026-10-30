@@ -1,6 +1,6 @@
 // Lights Out: a seated, hands-first wind-down in a glowing night forest.
-// First visit: a quick tutorial (boop, fireflies, rain). Then each night you choose:
-//   Fireflies  - a memory game: find fireflies of the same colour, then water your mushroom in the rain.
+// Each night you choose (the butterfly and a few words show you how, the first time):
+//   Fireflies  - a memory game that grows a level each night, then water your mushroom in the rain.
 //   Stargazing - the trees part overhead; lie back and put the stars to sleep one by one.
 import * as THREE from 'three';
 import { loadWorld, shaderMats, EYE } from './world.js';
@@ -18,7 +18,7 @@ import { Captions } from './captions.js';
 import { Stars } from './stars.js';
 import { Choice } from './choice.js';
 import { tweens, clamp } from './util.js';
-import { loadState, beginNight, saveState, wateredTonight } from './save.js';
+import { loadState, beginNight, saveState, wateredTonight, nightKey } from './save.js';
 
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
@@ -64,8 +64,10 @@ const GROW_WORDS = ['', 'it sprouts', 'it grows', 'it blooms'];
 const abovePot = () => seed.target.clone().add(new THREE.Vector3(0, 0.42, 0));
 const state = loadState();
 const newNight = beginNight(state); saveState(state);
-// The tutorial plays on the very first visit, or whenever asked for (?tutorial=1, or "How to play").
+// First-time guidance (the butterfly's demonstrations and the words) shows on the very first visit,
+// or whenever asked for (?tutorial=1, or "Show me how to play").
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
+if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
 let W, sleep, flies, touch, rain, seed;
 const phase = { name: 'loading', t: 0, rainT: 0, mode: null };
@@ -101,12 +103,14 @@ async function init() {
   let neutral = null; const bloom = W.magic.stages[3]; if (bloom) bloom.traverse((m) => { if (m.isMesh && m.material.map) neutral = m.material.map; });
   touch.setPalette(seed.palette, neutral);
   flies.onMatch = onPairFound;
-  flies.onMiss = () => { if (TUTORIAL && !phase.saidMiss) { phase.saidMiss = true; say('Not the same colour\nThey fade back and wait', { hold: 2.6 }); } };
+  flies.onMiss = () => { if (!state.memoryShown && !phase.saidMiss) { phase.saidMiss = true; say('Not the same colour\nThey fade back and wait', { hold: 2.6 }); } };
   flies.onAllDone = onAllPairs;
+  flies.onPeek = (secs) => say(`Remember the colours\nYou have ${secs} seconds`, { hold: secs - 3 });
+  flies.onPeekEnd = () => { if (state.memoryShown || JUST_SIT) say('Now find the pairs', { hold: 2.4 }); };
   stars.onOut = onStarOut;
   stars.onAllOut = () => { tweens.add(0.1, () => {}, { delay: 2.5, done: () => { say('The sky is asleep', { hold: 3 }); tweens.add(0.1, () => {}, { delay: 4, done: goodnight }); } }); };
   choice.onPick = startMode;
-  ui.status.textContent = TUTORIAL ? 'A one-minute tutorial comes first' : (newNight ? `Night ${state.nights}` : `Night ${state.nights}, again`);
+  ui.status.textContent = newNight ? `Night ${state.nights}` : `Night ${state.nights}, again`;
   const xrOK = navigator.xr && await navigator.xr.isSessionSupported('immersive-vr').catch(() => false);
   ui.vr.disabled = !xrOK; ui.vr.textContent = xrOK ? 'Enter the forest' : 'Headset not found';
   ui.screen.disabled = false;
@@ -119,12 +123,7 @@ function begin() {
   sound.setVolume(options.volume);
   sound.start();
   phase.name = 'arrival'; phase.t = 0;
-  if (TUTORIAL) {
-    // the tutorial never saves anything: it starts with an empty pot and puts your progress back afterwards
-    phase.saved = { stage: state.stage, color: state.color };
-    seed.demo = true; state.stage = 0; seed.show(0, false);
-    flies.fast = true; rain.catchRate = 0.35;
-  } else tweens.add(0.1, () => {}, { delay: 1.2, done: () => say(`Night ${state.nights}`, { width: 1.2, hold: 2.6 }) });
+  if (!TUTORIAL) tweens.add(0.1, () => {}, { delay: 1.2, done: () => say(`Night ${state.nights}`, { width: 1.2, hold: 2.6 }) });
 }
 
 function readOptions() {
@@ -150,7 +149,7 @@ ui.vr.addEventListener('click', async () => {
   } catch (e) { console.error(e); ui.status.textContent = 'Could not start VR on this device.'; }
 });
 ui.screen.addEventListener('click', () => { begin(); ui.hint.classList.add('show'); setTimeout(() => ui.hint.classList.remove('show'), 7000); });
-if (ui.howto) ui.howto.addEventListener('click', () => { TUTORIAL = true; ui.status.textContent = 'The tutorial will play first'; ui.howto.disabled = true; });
+if (ui.howto) ui.howto.addEventListener('click', () => { TUTORIAL = true; state.memoryShown = false; ui.status.textContent = 'The butterfly will show you how'; ui.howto.disabled = true; });
 
 // Put the player's head exactly at the seat, at seated eye height, whatever their real posture
 // (sitting, or lying back for the stars).
@@ -184,30 +183,30 @@ function updatePhases(dt) {
     if (phase.t > 2.2 && touch.count === 0 && b && guide.mode !== 'tap') guide.tap(b.center, () => { b.flash = Math.max(b.flash, 0.6); sound.boop(b.center, b.hz); });
     if (phase.t > 2.6 && !phase.saidBoop) { phase.saidBoop = true; say('Boop the mushrooms\nEach one has its own note'); }
     if (touch.count > 0 && guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.35, 1.3, -0.8), { orbit: 0.08, speed: 0.9 });
-    if ((touch.count >= 2 && phase.t > 7) || phase.t > 14) startMode('fireflies');
+    if ((touch.count >= 2 && phase.t > 7) || phase.t > 14) askChoice();
   } else if (P === 'fireflies') {
     // the butterfly shows the first boop on a firefly, and again if nothing happens for a while
     // the butterfly shows the game once: it boops one firefly, then the one with the same colour
     const all = flies.list.length && flies.list.every((f) => f.state !== 'fly');
     const free = guide.mode === 'hover' || guide.mode === 'perch';
     if (JUST_SIT) { if (all && phase.t - (phase.autoPair ?? 0) > 7) { phase.autoPair = phase.t; flies.autoPair(); } }
-    else if (all && free && !phase.shownOnce && (TUTORIAL || phase.firstNight || !state.memoryShown)) {
+    else if (all && flies.ready && free && !phase.shownOnce && !state.memoryShown) {
       const a = flies.waiting[0], b = a && flies.partnerOf(a);
       if (a && b) {
         phase.shownOnce = true; a.held = b.held = true;
-        say('Boop two fireflies\nFind the ones that share a colour', { hold: 4 });
+        say('Boop two fireflies\nthat share a colour', { hold: 4 });
         guide.tap(a.g.position.clone(), () => {
           flies.boop(a);
           guide.tap(b.g.position.clone(), () => { flies.boop(b); state.memoryShown = true; saveState(state); guide.twirl(() => guide.goTo(new THREE.Vector3(-0.5, 1.42, -0.8), { orbit: 0.05, speed: 0.9 })); });
         });
       }
-    } else if (all && !phase.shownOnce) { phase.shownOnce = true; say('Find the fireflies\nthat share a colour', { hold: 3 }); }
+    }
   } else if (P === 'rain') {
     phase.rainT += dt;
     if (phase.tellPour === undefined && rain.held > 0.4) { phase.tellPour = true; say('Now tip your hands\nover the pot', { at: abovePot().add(new THREE.Vector3(0, 0.12, 0)), width: 0.84 }); }
     // the butterfly shows it too, if no one has caught any rain yet
-    if (!phase.rainShown && phase.rainT > (TUTORIAL ? 7 : 10) && rain.held < 0.1 && needsWater()) { phase.rainShown = true; showRainDemo(); }
-    if (!TUTORIAL) {
+    if (!phase.rainShown && phase.rainT > 10 && rain.held < 0.1 && needsWater()) { phase.rainShown = true; showRainDemo(); }
+    {
       if (wateredTonight(state) && phase.wateredAt === undefined) phase.wateredAt = phase.rainT;
       const done = phase.firstNight ? phase.rainT > 240
         : wateredTonight(state) ? phase.rainT > phase.wateredAt + (seed.state.stage === 3 ? 12 : 8) : phase.rainT > 150;
@@ -224,9 +223,9 @@ function askChoice() {
   if (phase.name === 'choose') return;
   phase.name = 'choose'; phase.t = 0;
   guide.goTo(new THREE.Vector3(0, 1.32, -0.62), { orbit: 0.05, speed: 0.8 });
-  say('What would you like tonight?', { hold: 2.6 });
+  say('What would you like tonight?\nTouch one to choose', { hold: 3.2 });
   tweens.add(0.1, () => {}, { delay: 1.6, done: () => choice.show([
-    { key: 'fireflies', title: 'Fireflies', sub: 'find the matching colours\nand water your mushroom', color: 0xd8ff7a },
+    { key: 'fireflies', title: 'Firefly memory', sub: 'find the matching colours\nand water your mushroom', color: 0xd8ff7a },
     { key: 'stars', title: 'Stargazing', sub: 'lie back and put\nthe stars to sleep', color: 0xbfd2ff },
   ]) });
 }
@@ -237,11 +236,17 @@ function startMode(mode) {
   if (mode === 'fireflies') {
     phase.name = 'fireflies';
     input.farHands = false;
-    // 24 fireflies (12 pairs) on a real night; a small board of 4 pairs in the tutorial
-    tweens.add(0.1, () => {}, { delay: 0.8, done: () => flies.startMemory(TUTORIAL ? 4 : 12) });
+    // the forest's own glow quiets down so the fireflies stand out clearly in front of you
+    sleep.quiet(0.32); touch.dimBoops(0.55);
+    // levels: 5 pairs (10 fireflies) to start, two more pairs for every board you finish, one level a night
+    const pairs = memoryPairs();
+    state.tutorialDone = true; saveState(state);
+    say(`Level ${state.memoryLevel || 1}\n${pairs * 2} fireflies`, { width: 0.9, hold: 2.2 });
+    tweens.add(0.1, () => {}, { delay: 2.6, done: () => flies.startMemory(pairs, 10) });
   } else {
     phase.name = 'stars';
     input.farHands = true;
+    state.tutorialDone = true; saveState(state);
     // the trees overhead part slowly and the sky opens up
     tweens.add(8, (k) => W.canopy.set(k * k * (3 - 2 * k)));
     tweens.add(0.1, () => {}, { delay: 2.5, done: () => stars.start() });
@@ -256,13 +261,18 @@ function startMode(mode) {
 function onPairFound() {
   // your first pair (after the butterfly's): a little twirl of joy
   if (flies.matched === 2 && !phase.praised) { phase.praised = true; if (guide.mode === 'hover') guide.twirl(() => guide.goTo(new THREE.Vector3(-0.5, 1.42, -0.8), { orbit: 0.05, speed: 0.9 })); }
-  if (!TUTORIAL && flies.matched === flies.pairs - 1) say('One pair left', { hold: 2 });
+  if (flies.pairs > 5 && flies.matched === flies.pairs - 1) say('One pair left', { hold: 2 });
 }
 
 // every pair found: the forest is asleep, and the rain comes
 function onAllPairs() {
-  tweens.add(0.1, () => {}, { delay: 2, done: () => { if (TUTORIAL || needsWater()) startRain(); else goodnight(); } });
+  sleep.quiet(1); touch.dimBoops(1);
+  // level up (once a night): tomorrow brings two more pairs
+  if (state.levelNight !== nightKey()) { state.memoryLevel = (state.memoryLevel || 1) + 1; state.levelNight = nightKey(); saveState(state); }
+  tweens.add(0.1, () => {}, { delay: 1.2, done: () => say(`Well remembered\nTomorrow night: ${memoryPairs() * 2} fireflies`, { hold: 3.4 }) });
+  tweens.add(0.1, () => {}, { delay: 6, done: () => { if (needsWater()) startRain(); else goodnight(); } });
 }
+function memoryPairs() { return Math.min(15, 5 + 2 * ((state.memoryLevel || 1) - 1)); }
 
 function startRain() {
   phase.name = 'rain'; phase.rainT = 0; phase.tellPour = undefined; phase.rainShown = false;
@@ -273,32 +283,10 @@ function startRain() {
 }
 
 function onGrow(stage) {
-  if (TUTORIAL) {
-    // tutorial: one watering shows the whole life of the mushroom, quickly
-    captions.show(GROW_WORDS[stage], abovePot(), { width: 0.52, hold: 1.2, fadeIn: 0.6, fadeOut: 0.8 });
-    if (stage < 3) { tweens.add(0.1, () => {}, { delay: 1.7, done: () => seed.grow() }); return; }
-    tweens.add(0.1, () => {}, { delay: 3, done: () => say('Water it each night\nand watch it grow', { hold: 3 }) });
-    tweens.add(0.1, () => {}, { delay: 8, done: finishTutorial });
-    return;
-  }
   if (phase.firstNight && stage === 3 && !phase.carryScheduled) { phase.carryScheduled = true; scheduleCarry(); }
   captions.show(GROW_WORDS[stage], abovePot(), { width: 0.52 });
   seed.invite = phase.firstNight && stage < 3;
   guide.goTo(seed.target.clone().add(new THREE.Vector3(0, 0.3, 0)), { orbit: 0.12, speed: 0.9 });
-}
-
-// The tutorial hands over to your own night: the rain stops, the forest wakes, and you choose.
-function finishTutorial() {
-  TUTORIAL = false;
-  state.tutorialDone = true;
-  state.stage = phase.saved.stage; state.color = phase.saved.color;
-  seed.demo = false; seed.water = 0; seed.show(state.stage, true); seed.invite = false;
-  saveState(state);
-  flies.fast = false; rain.catchRate = 0.12; rain.stop();
-  sleep.wakeAll(4);
-  say('Now your own night begins', { hold: 2.6 });
-  phase.name = 'between'; phase.mode = null;
-  tweens.add(0.1, () => {}, { delay: 5, done: askChoice });
 }
 
 function goodnight() {
@@ -351,7 +339,6 @@ function showRainDemo() {
   guide.fillRate = 0.9;
   guide.rainDemo(new THREE.Vector3(0.04, 1.06, -0.3), above, rimPoint(), () => {
     phase.demoEnd = phase.rainT;
-    if (TUTORIAL) { if (seed.state.stage === 0) seed.grow(); return; }
     if (phase.firstNight && seed.state.stage === 0) seed.grow(); else seed.receiveWater(0);
   });
 }

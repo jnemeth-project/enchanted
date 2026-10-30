@@ -45,15 +45,15 @@ export class Sleep {
     g.clusters.forEach((c, i) => {
       const base = c.scale.y;
       if (c.userData.sy === undefined) c.userData.sy = base;
-      tweens.add(4.5, (k) => { setEmissiveScale(c.userData.mats, 1 - 0.86 * k); c.scale.y = base * (1 - 0.05 * k); }, { delay: i * 0.35 });
+      tweens.add(4.5, (k) => { c.userData.lv = 1 - 0.86 * k; c.scale.y = base * (1 - 0.05 * k); }, { delay: i * 0.35 });
     });
     for (const d of g.dust) {
       if (d.userData.y0 === undefined) d.userData.y0 = d.position.y;
       const y0 = d.userData.y0;
       d.userData.twirlScale = 1;
-      tweens.add(6, (k) => { setEmissiveScale(d.userData.mats, 1 - k); d.position.y = y0 - 0.45 * k; d.userData.twirlScale = 1 - 0.85 * k; }, { delay: 0.6, done: () => { d.visible = false; } });
+      tweens.add(6, (k) => { d.userData.lv = 1 - k; d.position.y = y0 - 0.45 * k; d.userData.twirlScale = 1 - 0.85 * k; }, { delay: 0.6, done: () => { d.visible = false; } });
     }
-    for (const r of g.ribbons) tweens.add(5, (k) => setEmissiveScale(r.userData.mats, 1 - k), { delay: 0.3, done: () => { r.visible = false; } });
+    for (const r of g.ribbons) tweens.add(5, (k) => { r.userData.lv = 1 - k; }, { delay: 0.3, done: () => { r.visible = false; } });
     tweens.add(1, () => {}, { delay: 4.5, done: () => { g.asleep = true; g.sleeping = false; } });
     this.asleepCount++;
     this.progress = this.asleepCount / this.groups.length;
@@ -62,9 +62,9 @@ export class Sleep {
   // the forest wakes again (after the tutorial, before your own night begins)
   wakeAll(dur = 3) {
     for (const g of this.groups) {
-      for (const c of g.clusters) tweens.add(dur, (k) => { setEmissiveScale(c.userData.mats, 0.14 + 0.86 * k); if (c.userData.sy !== undefined) c.scale.y = c.userData.sy; });
-      for (const d of g.dust) { d.visible = true; d.userData.twirlScale = 1; if (d.userData.y0 !== undefined) d.position.y = d.userData.y0; tweens.add(dur, (k) => setEmissiveScale(d.userData.mats, k)); }
-      for (const r of g.ribbons) { r.visible = true; tweens.add(dur, (k) => setEmissiveScale(r.userData.mats, k)); }
+      for (const c of g.clusters) tweens.add(dur, (k) => { c.userData.lv = 0.14 + 0.86 * k; if (c.userData.sy !== undefined) c.scale.y = c.userData.sy; });
+      for (const d of g.dust) { d.visible = true; d.userData.twirlScale = 1; if (d.userData.y0 !== undefined) d.position.y = d.userData.y0; tweens.add(dur, (k) => { d.userData.lv = k; }); }
+      for (const r of g.ribbons) { r.visible = true; tweens.add(dur, (k) => { r.userData.lv = k; }); }
       g.asleep = false; g.sleeping = false;
     }
     this.asleepCount = 0; this.progress = 0;
@@ -73,11 +73,21 @@ export class Sleep {
   allAsleep() { return this.asleepCount >= this.groups.length; }
 
   // Everything that is not a cluster dims with overall progress.
+  // Quiet the whole forest's glow (0..1), e.g. so fireflies stand out clearly in front of you.
+  quiet(level) { this.quietTarget = level; }
+
   update(dt) {
     this.shown = damp(this.shown, this.progress, 0.6, dt);
+    this.q = damp(this.q ?? 1, this.quietTarget ?? 1, 1.0, dt);
+    const q = this.q, qq = q * q; // sparkles and ribbons quiet down more than the mushrooms
+    for (const g of this.groups) {
+      for (const c of g.clusters) setEmissiveScale(c.userData.mats, (c.userData.lv ?? 1) * q);
+      for (const d of g.dust) setEmissiveScale(d.userData.mats, (d.userData.lv ?? 1) * qq);
+      for (const r of g.ribbons) setEmissiveScale(r.userData.mats, (r.userData.lv ?? 1) * qq);
+    }
     const k = 1 - this.shown;
     const D = this.W.dim;
-    const set = (name, lo) => { const o = D[name]; if (o) setEmissiveScale(o.userData.mats, lo + (1 - lo) * k); };
+    const set = (name, lo) => { const o = D[name]; if (o) setEmissiveScale(o.userData.mats, (lo + (1 - lo) * k) * q); };
     set('LoneMushrooms', 0.2); set('Puffballs', 0.3); set('Crystals', 0.45); set('GlowRocks', 0.4); set('Spores', 0.1);
   }
 }
