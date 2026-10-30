@@ -92,7 +92,7 @@ async function init() {
   rain = new Rain(scene, sound, effects, seed);
   menu = new Menu(scene, W, input, sound);
   menu.volume = options.volume; menu.muted = !!options.muted;
-  menu.getView = () => ({ pos: ahead(0.62, -0.02), quat: viewQuat() });
+  menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
   menu.onMainMenu = toMainMenu; menu.onSwap = swapMode;
   menu.onVolume = (v, vol, muted) => { sound.setVolume(v); options.volume = vol; options.muted = muted; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
   input.addPicker((r) => menu.pick(r), { ui: true });

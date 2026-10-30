@@ -44,11 +44,13 @@ export class Gaze {
     if (c && c.key === this.key) this.t += dt; else { this.key = c ? c.key : null; this.t = 0; }
     this.fade += ((c ? 1 : 0) - this.fade) * Math.min(1, dt * 8);
     const m = this.ring.material.uniforms;
-    m.opacity.value = this.fade; m.progress.value = Math.min(1, this.t / DWELL);
+    // some things ask for a longer, deliberate look (the door out of the forest, the options)
+    const need = (c && c.dwell) || DWELL;
+    m.opacity.value = this.fade; m.progress.value = Math.min(1, this.t / need);
     if (c) {
       const d = c.point.distanceTo(o);
       this.ring.position.copy(c.point); this.ring.quaternion.copy(q); this.ring.scale.setScalar(Math.max(d * 0.07, (c.size || 0.06) * 1.9));
     }
-    if (c && this.t >= DWELL) { c.fire(); this.t = 0; this.cool = 0.9; this.key = null; }
+    if (c && this.t >= need) { c.fire(); this.t = 0; this.cool = 0.9; this.key = null; }
   }
 }

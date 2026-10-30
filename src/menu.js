@@ -41,7 +41,7 @@ export class Menu {
     this.panelC = document.createElement('canvas'); this.panelC.width = 768; this.panelC.height = 760;
     this.panelT = new THREE.CanvasTexture(this.panelC); this.panelT.colorSpace = THREE.SRGBColorSpace;
     this.panel = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.455), new THREE.MeshBasicMaterial({ map: this.panelT, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
-    this.panel.renderOrder = 40; this.panel.visible = false; this.scene.add(this.panel);
+    this.panel.renderOrder = 40; this.panel.visible = false; this.panel.scale.setScalar(1.6); this.scene.add(this.panel);
     this._drawPanel();
   }
 
@@ -97,12 +97,12 @@ export class Menu {
     if (this.open) {
       const h = this._hitObj(ray, this.panel); if (!h) return null;
       const key = this._rowAt(h.uv); if (!key) return null;
-      return { key: 'panel:' + key, size: 0.06, point: h.point, fire: () => this.press(key) };
+      return { key: 'panel:' + key, size: 0.06, dwell: 2.2, point: h.point, fire: () => this.press(key) };
     }
     const d = this.door && this._hitObj(ray, this.door);
-    if (d) return { key: 'door', size: 0.9, point: d.point, fire: () => this.press('door') };
+    if (d) return { key: 'door', size: 0.9, dwell: 3.2, point: d.point, fire: () => this.press('door') };
     const s = this.sign && this._hitObj(ray, this.sign);
-    if (s) return { key: 'sign', size: 0.5, point: s.point, fire: () => this.press('options') };
+    if (s) return { key: 'sign', size: 0.5, dwell: 2.6, point: s.point, fire: () => this.press('options') };
     return null;
   }
 
