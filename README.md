@@ -12,12 +12,16 @@ Lights Out is a seated, hands-only VR wind-down for Meta Quest and Meta VR Glass
 
 ## A night in the forest
 
-Each night you choose how to wind down. The first time, the butterfly and a few glowing words show you how.
+On the start screen, choose how long you'd like to stay: 5, 10, 15 or 20 minutes. In the forest you choose how to wind down, and the night paces itself to fit. The first time, the butterfly and a few glowing words show you how.
 
-- **Firefly memory.** The forest's glow quiets down and fireflies drift in to hover within reach. For ten seconds each one shows its colour: remember them. Then they all turn gold. Boop one to see its colour (and hear its note), then another: if they match, the pair goes to sleep together, and part of the forest with them. If not, they fade back and wait. No timer, no score; if you're stuck, a hidden pair briefly shimmers. You start with 10 fireflies, and each night you finish a board, the next night brings two more pairs. Then soft rain comes: cup your hands, catch it, and tip it into the terracotta pot to grow your mushroom.
+- **Firefly memory.** The forest's glow quiets down and fireflies drift in to hover within reach. For ten seconds each one shows its colour: remember them. Then they all turn gold. Boop one to see its colour (and hear its note), then another: if they match, the pair goes to sleep together, and part of the forest with them. If not, they fade back and wait. No timer, no score; if you're stuck, a hidden pair briefly shimmers. You start with 10 fireflies; every board you finish brings the next level with two more pairs, for as long as your session lasts, with no limit (your level is remembered). Near the end of the session the fireflies drift home and soft rain comes: cup your hands, catch it, and tip it into the terracotta pot to grow your mushroom.
 ![Ten fireflies showing their colours for you to remember](docs/memory.jpg)
 
-- **Stargazing.** The trees overhead part and the sky opens. Lie back (or just look up), point at a star and pinch, and it goes to sleep. When the last star sleeps, so does the forest.
+- **Stargazing.** The trees overhead part and the sky opens. Lie back and enjoy: point at a star and pinch, and it goes to sleep. When the last star sleeps and there's still time, a new sky of stars wakes up.
+
+**Getting out, and options.** On the big tree to your right there's a small glowing door marked *Main menu*: point at it and pinch (or look at it, or click it) to go back to the start screen at any time. Above it hangs an old shop sign marked *Options*: volume, mute, and swapping between the two activities.
+
+![The options panel, with the Main menu door and the Options sign on the tree](docs/options.jpg)
 
 ![Stargazing: the canopy has opened, the moon and a few bright sleepy stars overhead](docs/stargazing.jpg)
 

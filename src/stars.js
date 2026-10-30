@@ -42,6 +42,19 @@ export class Stars {
   get awake() { return this.list.filter((s) => s.state === 'awake'); }
 
   start() { this.group.visible = true; this.target = 1; }
+
+  // a fresh sky of awake stars, scattered overhead (used for later waves in a longer session)
+  wake(scatter = true) {
+    for (const st of this.list) {
+      if (scatter) {
+        const a = THREE.MathUtils.degToRad(rand(-55, 55)), e = THREE.MathUtils.degToRad(rand(42, 84));
+        st.dir.set(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)).normalize();
+        st.p.copy(this.eye).addScaledVector(st.dir, DIST); st.glow.position.copy(st.p); st.core.position.copy(st.p);
+      }
+      st.state = 'awake'; st.light = 0; st.outT = 0; st.hot = 0;
+    }
+    this.out = 0; this.allFired = false; this.start();
+  }
   stop() { this.target = 0; }
 
   // which star a ray points at: the closest within a few degrees
@@ -66,6 +79,7 @@ export class Stars {
     for (const s of this.list) {
       s.hot += ((s === hover ? 1 : 0) - s.hot) * Math.min(1, dt * 6);
       if (s.state === 'out') { s.outT += dt; s.light = Math.max(0.06, 1 - s.outT / 2.4); }
+      else s.light = Math.min(1, s.light + dt * 0.5); // new stars fade in
       const tw = 0.8 + 0.2 * Math.sin(time * (1.1 + (s.ph % 1)) + s.ph);
       const L = this.level * s.light * tw;
       s.glow.material.opacity = 0.55 * L * (1 + 0.6 * s.hot);

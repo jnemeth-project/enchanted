@@ -26,7 +26,7 @@ export class Input {
     this.hands = [new HandState(0), new HandState(1)];
     this.rayHandlers = []; this.mode = 'desktop';
     // Far pointing (stargazing): hands then aim with the headset's own hand ray and pinch to select.
-    this.farHands = false; this.aim = [null, null];
+    this.farHands = false; this.aim = [null, null]; this.beam = [false, false];
     this.handMat = new THREE.MeshBasicMaterial({ color: 0xbfe2ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
     const factory = new XRHandModelFactory();
     this.xrHands = [0, 1].map((i) => {
@@ -45,10 +45,12 @@ export class Input {
       c.addEventListener('disconnected', () => { c.userData.source = null; c.clear(); });
       c.addEventListener('selectstart', () => {
         const src = c.userData.source;
-        if (!src || (src.hand && !this.farHands)) return; // real hands use direct touch, except when pointing at the sky
+        if (!src) return;
         const o = new THREE.Vector3(), q = new THREE.Quaternion();
         c.getWorldPosition(o); c.getWorldQuaternion(q);
-        this.emitRay(new THREE.Ray(o, new THREE.Vector3(0, 0, -1).applyQuaternion(q)));
+        // a hand's pinch-at-a-distance only reaches the far-away things made for pointing (the door, the sign,
+        // the options panel, stars); everything nearby is touched directly
+        this.emitRay(new THREE.Ray(o, new THREE.Vector3(0, 0, -1).applyQuaternion(q)), !!src.hand && !this.farHands);
       });
       return c;
     });
@@ -62,9 +64,11 @@ export class Input {
   }
 
   // each picker returns { key, point, fire } for what the ray points at, or null
-  addPicker(fn) { this.rayHandlers.push(fn); }
-  pick(ray) { for (const fn of this.rayHandlers) { const c = fn(ray); if (c) return c; } return null; }
-  emitRay(ray) { const c = this.pick(ray); if (c) { c.fire(); return true; } return false; }
+  // ui pickers can be reached by pointing a hand from afar; the others only by gaze, mouse or controller
+  addPicker(fn, { ui = false } = {}) { this.rayHandlers.push({ fn, ui }); }
+  pick(ray, uiOnly = false) { for (const h of this.rayHandlers) { if (uiOnly && !h.ui) continue; const c = h.fn(ray); if (c) return c; } return null; }
+  emitRay(ray, uiOnly = false) { const c = this.pick(ray, uiOnly); if (c) { c.fire(); return true; } return false; }
+  setBeam(i, on) { this.beam[i] = on; }
 
   update(dt) {
     const xr = this.renderer.xr.isPresenting;
@@ -72,8 +76,8 @@ export class Input {
     // pointing rays from controllers and (when allowed) hands
     this.controllers.forEach((c, i) => {
       const src = c.userData.source, line = c.userData.line;
-      const usable = xr && c.visible && src && src.targetRayMode === 'tracked-pointer' && (!src.hand || this.farHands);
-      if (line) line.visible = !!usable;
+      const usable = xr && c.visible && src && src.targetRayMode === 'tracked-pointer';
+      if (line) line.visible = !!usable && (!src.hand || this.farHands || this.beam[i]);
       if (!usable) { this.aim[i] = null; return; }
       const o = new THREE.Vector3(), q = new THREE.Quaternion();
       c.getWorldPosition(o); c.getWorldQuaternion(q);

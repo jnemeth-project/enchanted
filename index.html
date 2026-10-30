@@ -28,6 +28,10 @@
   .opts input[type=range] { flex: 1; accent-color: #8ff5d4; }
   .opts small { display: block; color: #8d85ad; font-size: 0.8rem; }
   .foot { margin-top: 1.6rem; font-size: 0.85rem; color: #8d85ad; }
+  #session { display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin: 0 auto 1.2rem; color: var(--soft); font-size: 0.95rem; flex-wrap: wrap; }
+  #session button { margin: 0; padding: 0.45rem 0.85rem; font-size: 1rem; min-width: 2.8rem; background: transparent; border-color: rgba(255,255,255,0.18); }
+  #session button.on { background: rgba(143,245,212,0.18); border-color: rgba(143,245,212,0.7); }
+  #session span { margin: 0 0.3rem; }
   #hint { position: fixed; bottom: 1.4rem; left: 50%; transform: translateX(-50%); color: var(--soft); font-size: 0.95rem; opacity: 0; transition: opacity 1.2s; pointer-events: none; }
   #hint.show { opacity: 0.85; }
 </style>
@@ -44,6 +48,7 @@
   <p>A quiet night in a glowing forest.<br>Sit comfortably. Your hands are all you need.</p>
   <div class="track"><div id="bar"></div></div>
   <div id="status">Gathering the forest…</div>
+  <div id="session" role="group" aria-label="Session length"><span>Stay for</span><button data-min="5">5</button><button data-min="10">10</button><button data-min="15">15</button><button data-min="20">20</button><span>minutes</span></div>
   <button id="enter-vr" disabled>Enter the forest</button>
   <button id="enter-screen" class="quiet" disabled>Look around on this screen</button>
   <button id="how-to" class="quiet small">Show me how to play</button>

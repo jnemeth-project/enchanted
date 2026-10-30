@@ -17,6 +17,7 @@ import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { Stars } from './stars.js';
 import { Choice } from './choice.js';
+import { Menu } from './menu.js';
 import { tweens, clamp } from './util.js';
 import { loadState, beginNight, saveState, wateredTonight, nightKey } from './save.js';
 
@@ -69,8 +70,10 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed;
+let W, sleep, flies, touch, rain, seed, menu;
 const phase = { name: 'loading', t: 0, rainT: 0, mode: null };
+const session = { t: 0, len: 600, warned: false };
+const remaining = () => session.len - session.t;
 const clock = new THREE.Clock();
 let time = 0, xrFrames = 0;
 
@@ -86,8 +89,14 @@ async function init() {
   seed = new Seed(scene, W, state, sound, effects, touch);
   flies = new Fireflies(scene, sleep, sound);
   rain = new Rain(scene, sound, effects, seed);
-  input.addPicker((r) => choice.pickRay(r));
-  input.addPicker((r) => (phase.mode === 'stars' ? stars.pick(r) : null));
+  menu = new Menu(scene, W, input, sound);
+  menu.volume = options.volume; menu.muted = !!options.muted;
+  menu.getView = () => ({ pos: ahead(0.62, -0.02), quat: viewQuat() });
+  menu.onMainMenu = toMainMenu; menu.onSwap = swapMode;
+  menu.onVolume = (v, vol, muted) => { sound.setVolume(v); options.volume = vol; options.muted = muted; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
+  input.addPicker((r) => menu.pick(r), { ui: true });
+  input.addPicker((r) => choice.pickRay(r), { ui: true });
+  input.addPicker((r) => (phase.mode === 'stars' ? stars.pick(r) : null), { ui: true });
   input.addPicker((r) => flies.pick(r));
   input.addPicker((r) => seed.pick(r));
   input.addPicker((r) => rain.pick(r));
@@ -108,7 +117,7 @@ async function init() {
   flies.onPeek = (secs) => say(`Remember the colours\nYou have ${secs} seconds`, { hold: secs - 3 });
   flies.onPeekEnd = () => { if (state.memoryShown || JUST_SIT) say('Now find the pairs', { hold: 2.4 }); };
   stars.onOut = onStarOut;
-  stars.onAllOut = () => { tweens.add(0.1, () => {}, { delay: 2.5, done: () => { say('The sky is asleep', { hold: 3 }); tweens.add(0.1, () => {}, { delay: 4, done: goodnight }); } }); };
+  stars.onAllOut = onSkyAsleep;
   choice.onPick = startMode;
   ui.status.textContent = newNight ? `Night ${state.nights}` : `Night ${state.nights}, again`;
   const xrOK = navigator.xr && await navigator.xr.isSessionSupported('immersive-vr').catch(() => false);
@@ -120,15 +129,17 @@ async function init() {
 function begin() {
   readOptions();
   ui.overlay.classList.add('gone');
-  sound.setVolume(options.volume);
+  sound.setVolume(options.muted ? 0 : options.volume);
   sound.start();
   phase.name = 'arrival'; phase.t = 0;
+  session.t = 0; session.len = (options.session || 10) * 60;
   if (!TUTORIAL) tweens.add(0.1, () => {}, { delay: 1.2, done: () => say(`Night ${state.nights}`, { width: 1.2, hold: 2.6 }) });
 }
 
 function readOptions() {
   const q = (id) => document.getElementById(id);
   if (q('opt-look')) { options.look = q('opt-look').checked; options.sit = q('opt-sit').checked; options.bright = q('opt-bright').checked; options.volume = +q('opt-volume').value; }
+  const sel = document.querySelector('#session button.on'); if (sel) options.session = +sel.dataset.min;
   try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {}
   JUST_SIT = options.sit;
   if (JUST_SIT) TUTORIAL = false;
@@ -138,6 +149,11 @@ function readOptions() {
 }
 for (const [id, key] of [['opt-look', 'look'], ['opt-sit', 'sit'], ['opt-bright', 'bright']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
 { const v = document.getElementById('opt-volume'); if (v) v.value = options.volume; }
+// how long tonight's session lasts: 5, 10, 15 or 20 minutes (remembered)
+for (const b of document.querySelectorAll('#session button')) {
+  b.classList.toggle('on', +b.dataset.min === (options.session || 10));
+  b.addEventListener('click', () => { for (const x of document.querySelectorAll('#session button')) x.classList.toggle('on', x === b); options.session = +b.dataset.min; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} });
+}
 
 ui.vr.addEventListener('click', async () => {
   try {
@@ -168,6 +184,7 @@ function ahead(dist = 1.25, up = 0.16) {
   return o.addScaledVector(f, dist).addScaledVector(u, up);
 }
 // on-screen words, always placed where you are looking
+function viewQuat() { const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera; const q = new THREE.Quaternion(); cam.getWorldQuaternion(q); return q; }
 function say(text, { width = 1.1, hold = 3.4, at = null } = {}) { return captions.show(text, at || ahead(), { width, hold }); }
 
 // ---------------------------------------------------------------- the night
@@ -208,13 +225,20 @@ function updatePhases(dt) {
     if (!phase.rainShown && phase.rainT > 10 && rain.held < 0.1 && needsWater()) { phase.rainShown = true; showRainDemo(); }
     {
       if (wateredTonight(state) && phase.wateredAt === undefined) phase.wateredAt = phase.rainT;
-      const done = phase.firstNight ? phase.rainT > 240
-        : wateredTonight(state) ? phase.rainT > phase.wateredAt + (seed.state.stage === 3 ? 12 : 8) : phase.rainT > 150;
+      const done = remaining() < 22 || (!phase.firstNight && wateredTonight(state) && phase.rainT > phase.wateredAt + (seed.state.stage === 3 ? 12 : 8));
       if (done) goodnight();
       if (needsWater() && phase.rainShown && guide.mode === 'perch' && phase.rainT - (phase.demoEnd ?? 0) > 25) { phase.rainShown = false; }
     }
   } else if (P === 'stars') {
     if (JUST_SIT && phase.t > 8 && stars.awake.length && phase.t - (phase.autoStar ?? 0) > 6) { phase.autoStar = phase.t; stars.putOut(stars.awake[0]); }
+    if (remaining() < 28) { say('The sky is asleep', { hold: 3 }); goodnight(); }
+  }
+  // the session: a gentle note near the end, then the night winds down in time
+  if (P !== 'goodnight' && P !== 'loading') {
+    if (remaining() < 62 && !session.warned) { session.warned = true; say('One more minute', { hold: 2.4 }); }
+    if (P === 'fireflies' && remaining() < 80 && !phase.wrapping) wrapUpFireflies();
+    if (P === 'choose' && remaining() < 30) goodnight();
+    if (remaining() <= 0) goodnight();
   }
   if (rain) guide.rainLevel = rain.level;
 }
@@ -231,18 +255,17 @@ function askChoice() {
 }
 
 function startMode(mode) {
-  phase.mode = mode; phase.t = 0; phase.lastOutAt = 0; phase.shownOnce = false; phase.showing = false; phase.saidFlies = false;
+  phase.mode = mode; phase.t = 0; phase.lastOutAt = 0; phase.shownOnce = false; phase.showing = false; phase.saidFlies = false; phase.wrapping = false;
+  menu.mode = mode;
   if (guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.42, 1.3, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
   if (mode === 'fireflies') {
     phase.name = 'fireflies';
     input.farHands = false;
     // the forest's own glow quiets down so the fireflies stand out clearly in front of you
     sleep.quiet(0.32); touch.dimBoops(0.55);
-    // levels: 5 pairs (10 fireflies) to start, two more pairs for every board you finish, one level a night
-    const pairs = memoryPairs();
+    // levels: 5 pairs (10 fireflies) to start, two more pairs for every board you finish, for as long as the session lasts
     state.tutorialDone = true; saveState(state);
-    say(`Level ${state.memoryLevel || 1}\n${pairs * 2} fireflies`, { width: 0.9, hold: 2.2 });
-    tweens.add(0.1, () => {}, { delay: 2.6, done: () => flies.startMemory(pairs, 10) });
+    startLevel();
   } else {
     phase.name = 'stars';
     input.farHands = true;
@@ -250,7 +273,7 @@ function startMode(mode) {
     // the trees overhead part slowly and the sky opens up
     tweens.add(8, (k) => W.canopy.set(k * k * (3 - 2 * k)));
     tweens.add(0.1, () => {}, { delay: 2.5, done: () => stars.start() });
-    say('Lie back, or just look up', { hold: 3.2 });
+    say('Lie back and enjoy', { hold: 3.2 });
     tweens.add(0.1, () => {}, { delay: 6.5, done: () => { if (!JUST_SIT) say('Point at a star\nand pinch to put it to sleep', { hold: 4 }); } });
     // if you lie down, the forest follows: re-centre once you have settled
     for (const d of [4, 10]) tweens.add(0.1, () => {}, { delay: d, done: () => { if (renderer.xr.isPresenting) recenter(); } });
@@ -266,13 +289,55 @@ function onPairFound() {
 
 // every pair found: the forest is asleep, and the rain comes
 function onAllPairs() {
-  sleep.quiet(1); touch.dimBoops(1);
-  // level up (once a night): tomorrow brings two more pairs
-  if (state.levelNight !== nightKey()) { state.memoryLevel = (state.memoryLevel || 1) + 1; state.levelNight = nightKey(); saveState(state); }
-  tweens.add(0.1, () => {}, { delay: 1.2, done: () => say(`Well remembered\nTomorrow night: ${memoryPairs() * 2} fireflies`, { hold: 3.4 }) });
-  tweens.add(0.1, () => {}, { delay: 6, done: () => { if (needsWater()) startRain(); else goodnight(); } });
+  // level up, every board: no limit, as far as you can go within the session
+  state.memoryLevel = (state.memoryLevel || 1) + 1; saveState(state);
+  if (phase.name !== 'fireflies' || phase.wrapping) return;
+  if (remaining() < 100) { wrapUpFireflies(true); return; }
+  say('Well remembered', { hold: 1.8 });
+  tweens.add(0.1, () => {}, { delay: 3, done: () => { if (phase.name === 'fireflies' && !phase.wrapping) startLevel(); } });
 }
-function memoryPairs() { return Math.min(15, 5 + 2 * ((state.memoryLevel || 1) - 1)); }
+// two more pairs each level up to 30 fireflies; after that the remembering time gets a little shorter
+function memoryPairs(level = state.memoryLevel || 1) { return Math.min(15, 5 + 2 * (level - 1)); }
+function memorizeTime(level = state.memoryLevel || 1) { return level <= 6 ? 10 : Math.max(5, 10 - (level - 6)); }
+function startLevel() {
+  const level = state.memoryLevel || 1, pairs = memoryPairs(level);
+  say(`Level ${level}\n${pairs * 2} fireflies`, { width: 0.9, hold: 2.2 });
+  tweens.add(0.1, () => {}, { delay: 2.6, done: () => { if (phase.name === 'fireflies' && !phase.wrapping) flies.startMemory(pairs, memorizeTime(level)); } });
+}
+// the session is nearly over: the fireflies drift home, then the rain (if your mushroom needs it) and goodnight
+function wrapUpFireflies(finished = false) {
+  phase.wrapping = true;
+  flies.dismiss(); sleep.quiet(1); touch.dimBoops(1);
+  say(finished ? 'Well remembered\nTime to rest now' : 'Time to rest now', { hold: 2.6 });
+  tweens.add(0.1, () => {}, { delay: 3.5, done: () => { if (phase.name !== 'goodnight') { if (needsWater() && remaining() > 40) startRain(); else goodnight(); } } });
+}
+function onSkyAsleep() {
+  if (remaining() > 70) {
+    // still time: a new sky of stars wakes up
+    tweens.add(0.1, () => {}, { delay: 2.5, done: () => { say('More stars are waking', { hold: 2.4 }); stars.wake(true); } });
+  } else tweens.add(0.1, () => {}, { delay: 2.5, done: () => { say('The sky is asleep', { hold: 3 }); tweens.add(0.1, () => {}, { delay: 4, done: goodnight }); } });
+}
+
+// Options: swap to the other activity at any time
+function swapMode(mode) {
+  if (phase.name === 'goodnight') return;
+  if (choice.active) choice.hide();
+  if (phase.mode === 'fireflies') { phase.wrapping = true; flies.dismiss(); sleep.quiet(1); touch.dimBoops(1); }
+  if (phase.name === 'rain') rain.stop();
+  if (phase.mode === 'stars') { stars.stop(); const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); }
+  startMode(mode);
+}
+
+// The door: back to the main menu (the start screen), from anywhere
+function toMainMenu() {
+  say('See you soon', { hold: 1.4 });
+  sound.setAwake(0);
+  setTimeout(() => {
+    const s = renderer.xr.getSession && renderer.xr.getSession();
+    const go = () => { location.href = location.pathname + (DEBUG ? '?debug=1' : ''); };
+    if (s) s.end().then(go, go); else go();
+  }, 1600);
+}
 
 function startRain() {
   phase.name = 'rain'; phase.rainT = 0; phase.tellPour = undefined; phase.rainShown = false;
@@ -306,6 +371,7 @@ function goodnight() {
 // After the butterfly has gone, say clearly that the night is over.
 function nightComplete() {
   say('Goodnight', { width: 1.0, hold: 3 });
+  tweens.add(0.1, () => {}, { delay: 14, done: () => say('The little door in the tree\ntakes you back to the main menu', { hold: 4.5 }) });
   tweens.add(0.1, () => {}, { delay: 6, done: () => say('Come back tomorrow night\nto see what grows', { hold: 4.5 }) });
 }
 
@@ -353,7 +419,7 @@ if (DEBUG) {
     if (e.key === 'f') { choice.hide(); startMode('fireflies'); }
     if (e.key === 't') { choice.hide(); startMode('stars'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, stars, choice, input, captions });
+  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, stars, choice, input, captions, menu, session });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -381,6 +447,8 @@ function step(dt) {
     seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
+    menu.update(dt, input);
+    if (phase.name !== 'goodnight') session.t += dt;
     stars.update(dt, time, input);
     if (phase.name !== 'goodnight' && sound.amb) sound.setAwake(1 - sleep.shown * 0.7);
   }
