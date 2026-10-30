@@ -40,6 +40,22 @@ const SHAPES = [
   { name: 'a watering can', strokes: [[[-0.55, 0.35], [-0.55, -0.6], [0.3, -0.6], [0.3, 0.35], [-0.55, 0.35]], [[0.3, -0.25], [0.88, 0.42]], [[-0.55, 0.12], [-0.85, -0.05], [-0.55, -0.32]]] },
 ];
 
+// the ring around the star to look at: always there, and it fills up while you look
+const ringVS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`;
+const ringFS = `uniform float progress; uniform float opacity; varying vec2 vUv;
+void main(){ vec2 p = vUv * 2. - 1.; float r = length(p);
+  float band = smoothstep(0.72, 0.78, r) * (1. - smoothstep(0.9, 0.96, r));
+  float a = atan(p.x, p.y) / 6.2831853 + 0.5; float fill = step(a, progress);
+  vec3 c = mix(vec3(0.75, 0.84, 1.0), vec3(1.0, 0.84, 0.5), fill);
+  gl_FragColor = vec4(c, band * (0.35 + 0.65 * fill) * opacity); }`;
+// a soft chevron at the edge of your view, pointing to the star when it is out of sight
+function arrowTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  g.shadowColor = 'rgba(255, 220, 160, 0.9)'; g.shadowBlur = 26; g.strokeStyle = 'rgba(255, 240, 215, 0.95)'; g.lineWidth = 16; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(34, 78); g.lineTo(64, 44); g.lineTo(94, 78); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
 // a sky full of stars: thousands of points, most tiny, a few bright, and a soft Milky Way band
@@ -98,7 +114,7 @@ function numberTex(n) {
 }
 
 export class SkyGames {
-  constructor(scene, sound, eye, eyeRay) {
+  constructor(scene, sound, eye, eyeRay, viewQuat) {
     this.scene = scene; this.sound = sound; this.eye = eye.clone(); this.eyeRay = eyeRay;
     this.group = new THREE.Group(); this.group.visible = false; scene.add(this.group);
     this.field = starfield(this.eye); this.group.add(this.field);
@@ -106,15 +122,19 @@ export class SkyGames {
     this.mode = null; this.level = 0; this.target = 0; this.dim = 1; this.ownDwell = true;
     this.stars = []; this.trails = []; this.numbers = []; this.kept = [];
     this.count = 0; this.spawnT = 0; this.shapeIdx = 0; this.order = []; this.shape = null; this.pause = 0; this.shapesDone = 0;
-    this.hover = null; this.dwell = 0; this.cool = 0;
+    this.hover = null; this.dwell = 0; this.cool = 0; this.viewQuat = viewQuat; this.idle = 0;
+    this.ring = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({ uniforms: { progress: { value: 0 }, opacity: { value: 0 } }, vertexShader: ringVS, fragmentShader: ringFS, transparent: true, depthTest: false, depthWrite: false, fog: false }));
+    this.ring.renderOrder = -2; this.group.add(this.ring);
+    this.arrow = new THREE.Sprite(new THREE.SpriteMaterial({ map: arrowTex(), transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false }));
+    this.arrow.renderOrder = 31; this.arrow.scale.setScalar(0.07); scene.add(this.arrow); this.arrowK = 0;
     // callbacks for the night: a counted star, every ten, a picture started / finished
-    this.onCount = null; this.onTen = null; this.onShapeStart = null; this.onShapeDone = null;
+    this.onIdle = null; this.onCount = null; this.onTen = null; this.onShapeStart = null; this.onShapeDone = null;
   }
 
   // ---------------------------------------------------------------- lifecycle
   start(mode) {
     this.clearStars(); this.mode = mode; this.group.visible = true; this.target = 1; this.dim = 1;
-    this.count = 0; this.spawnT = 2.5; this.shapesDone = 0; this.pause = 3;
+    this.count = 0; this.spawnT = 7; this.shapesDone = 0; this.pause = 7; // the first star wakes as the directions mention the ring
     this.order = shuffle(SHAPES.map((_, i) => i)); this.shapeIdx = 0; this.shape = null;
   }
   stop() { this.target = 0; this.mode = null; for (const s of this.stars) s.fadeOut = true; for (const t of this.trails) t.fadeOut = true; }
@@ -246,7 +266,7 @@ export class SkyGames {
 
   choose(s) {
     if (!s || s.state !== 'next' || this.cool > 0) return;
-    this.cool = 0.5; this.dwell = 0;
+    this.cool = 0.5; this.dwell = 0; this.idle = 0;
     if (this.mode === 'count') this._collect(s); else this._light(s);
   }
 
@@ -256,7 +276,8 @@ export class SkyGames {
   // ---------------------------------------------------------------- every frame
   update(dt, time, input, pixelScale = 1) {
     this.level += (this.target - this.level) * Math.min(1, dt * 0.45);
-    if (!this.group.visible) return;
+    if (!this.group.visible) { this.arrow.visible = false; return; }
+    if (!this.mode) this.arrowK = 0;
     if (this.level < 0.003 && this.target === 0) { this.group.visible = false; this.clearStars(); return; }
     const fu = this.field.material.uniforms; fu.level.value = this.level * this.dim; fu.time.value = time; fu.scale.value = pixelScale;
     this.cool = Math.max(0, this.cool - dt);
@@ -279,6 +300,31 @@ export class SkyGames {
     const looked = look ? this._aimed(look) : null;
     if (looked) hover = looked;
     if (looked && this.ownDwell && this.cool <= 0) { this.dwell += dt; if (this.dwell >= DWELL) this.choose(looked); } else this.dwell = Math.max(0, this.dwell - dt * 2);
+
+    // where to look: a ring round the star that fills while you look, and an arrow when it is out of sight
+    const tgt = this._target();
+    const ru = this.ring.material.uniforms;
+    if (tgt && look) {
+      this.ring.position.copy(tgt.p); this.ring.lookAt(look.origin); this.ring.scale.setScalar(tgt.size * 3.2 * (1 + 0.06 * Math.sin(time * 2.2)));
+      ru.opacity.value += ((this.level * tgt.light) * 0.9 - ru.opacity.value) * Math.min(1, dt * 4);
+      ru.progress.value = looked === tgt ? Math.min(1, this.dwell / DWELL) : 0;
+      this.idle += dt; if (this.idle > 14 && this.onIdle) { this.idle = -10; this.onIdle(); }
+    } else { ru.opacity.value = Math.max(0, ru.opacity.value - dt * 3); this.idle = 0; }
+    let away = 0;
+    if (tgt && look && this.viewQuat) {
+      const q = this.viewQuat(), local = tgt.p.clone().sub(look.origin).applyQuaternion(q.clone().invert());
+      const ang = local.clone().normalize().angleTo(new THREE.Vector3(0, 0, -1));
+      if (ang > THREE.MathUtils.degToRad(24)) {
+        away = 1;
+        const d = new THREE.Vector2(local.x, local.y); if (d.lengthSq() < 1e-6) d.set(0, 1); d.normalize();
+        const off = new THREE.Vector3(d.x * 0.2, d.y * 0.2, -0.75).applyQuaternion(q);
+        this.arrow.position.copy(look.origin).add(off);
+        this.arrow.material.rotation = Math.atan2(d.y, d.x) - Math.PI / 2;
+        this.arrow.scale.setScalar(0.12 * (1 + 0.12 * Math.sin(time * 3)));
+      }
+    }
+    this.arrowK += (away * this.level - this.arrowK) * Math.min(1, dt * 3);
+    this.arrow.material.opacity = 0.8 * this.arrowK; this.arrow.visible = this.arrowK > 0.01;
 
     const showing = this.shape && this.shape.done ? Math.min(1, this.shape.t / 0.6) : 0;
     for (const s of [...this.stars]) {

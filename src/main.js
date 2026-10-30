@@ -60,7 +60,7 @@ const guide = new Guide(scene);
 const gaze = new Gaze(scene, renderer, camera, input);
 const captions = new Captions(scene);
 const choice = new Choice(scene, sound);
-const sky = new SkyGames(scene, sound, EYE, eyeRay);
+const sky = new SkyGames(scene, sound, EYE, eyeRay, viewQuat);
 const SKY = (m) => m === 'count' || m === 'shapes';
 const GROW_WORDS = ['', 'it sprouts', 'it grows', 'it blooms'];
 const abovePot = () => seed.target.clone().add(new THREE.Vector3(0, 0.42, 0));
@@ -119,7 +119,8 @@ async function init() {
   flies.onPeekEnd = () => { if (state.memoryShown || JUST_SIT) say('Now find the pairs', { hold: 2.4 }); };
   sky.onCount = onSkyCount;
   sky.onTen = (n) => say(`${n} stars`, { width: 0.7, hold: 2 });
-  sky.onShapeStart = (n) => { if (!phase.saidShape) { phase.saidShape = true; say(`${n} stars this time\nLook at the glowing one`, { hold: 3.6 }); } };
+  sky.onShapeStart = (n) => { if (phase.shapesSeen++ > 0) say(`A new picture\n${n} stars this time`, { hold: 3 }); };
+  sky.onIdle = () => { if (!JUST_SIT) say(phase.mode === 'count' ? 'Look at the star inside the ring\nand hold your gaze until it fills' : 'Look at the star inside the ring\nto draw the next line', { hold: 4 }); };
   sky.onShapeDone = onShapeDone;
   choice.onPick = startMode;
   ui.status.textContent = newNight ? `Night ${state.nights}` : `Night ${state.nights}, again`;
@@ -280,10 +281,20 @@ function startMode(mode) {
     state.tutorialDone = true; saveState(state);
     // the trees overhead part slowly and the sky opens up, full of stars
     if (!skyWasOpen) { const from = W.canopy.uniform.value; tweens.add(8, (k) => W.canopy.set(from + (1 - from) * k * k * (3 - 2 * k))); }
-    sky.start(mode);
-    say('Lie back and enjoy', { hold: 3.2 });
-    const how = mode === 'count' ? 'Look at a star to count it home\n(or point and pinch)' : 'Look at the glowing star\nto join the stars into a picture';
-    tweens.add(0.1, () => {}, { delay: 6.5, done: () => { if (!JUST_SIT && phase.mode === mode) say(how, { hold: 4.5 }); } });
+    sky.start(mode); phase.shapesSeen = 0;
+    // clear, step by step directions while the sky opens (each line waits for the last)
+    const steps = mode === 'count' ? [
+      ['Counting stars', 2.6], ['Lie back and look up\nat the sky', 3.4],
+      ['One star at a time will glow\ninside a ring of light', 4], ['Look at it and hold your gaze\nuntil the ring fills', 4],
+      ['Then count it in your head\nand wait for the next one', 4],
+    ] : [
+      ['Star pictures', 2.6], ['Lie back and look up\nat the sky', 3.4],
+      ['Some faint stars hide a picture\nOne glows inside a ring of light', 4.4], ['Look at it and hold your gaze\nuntil the ring fills', 4],
+      ['Each star you choose draws a line\nKeep going until the picture appears', 4.4],
+    ];
+    if (JUST_SIT) steps.splice(2);
+    let at = 0.5; for (const [text, hold] of steps) { tweens.add(0.1, () => {}, { delay: at, done: () => { if (phase.mode === mode) say(text, { hold }); } }); at += hold + 0.6; }
+
     // if you lie down, the forest follows: re-centre once you have settled
     for (const d of [4, 10]) tweens.add(0.1, () => {}, { delay: d, done: () => { if (renderer.xr.isPresenting) recenter(); } });
     guide.goTo(new THREE.Vector3(0.3, 1.9, -0.6), { orbit: 0.1, speed: 0.6 });
