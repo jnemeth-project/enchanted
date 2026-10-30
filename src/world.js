@@ -7,6 +7,8 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
+// bump this whenever the forest is re-exported, so headsets never keep showing an old saved copy
+export const FOREST_VERSION = 'pebbles3';
 export const EYE = new THREE.Vector3(0, 0.9, 0); // sitting on the forest floor, not on a chair
 export const shaderMats = []; // every material with a `time` uniform
 
@@ -103,7 +105,7 @@ function processMaterial(m) {
 
 export async function loadWorld(scene, onProgress) {
   const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
-  const gltf = await loader.loadAsync('assets/forest.glb', (e) => onProgress && onProgress(e.total ? e.loaded / e.total : 0));
+  const gltf = await loader.loadAsync('assets/forest.glb?v=' + FOREST_VERSION, (e) => onProgress && onProgress(e.total ? e.loaded / e.total : 0));
   const root = gltf.scene; scene.add(root);
 
   const cache = new Map();
