@@ -101,9 +101,9 @@ function processMaterial(m) {
   return m;
 }
 
-export async function loadWorld(scene, onProgress, url = 'assets/forest.glb') {
+export async function loadWorld(scene, onProgress) {
   const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
-  const gltf = await loader.loadAsync(url, (e) => onProgress && onProgress(e.total ? e.loaded / e.total : 0));
+  const gltf = await loader.loadAsync('assets/forest.glb', (e) => onProgress && onProgress(e.total ? e.loaded / e.total : 0));
   const root = gltf.scene; scene.add(root);
 
   const cache = new Map();
@@ -138,7 +138,7 @@ export async function loadWorld(scene, onProgress, url = 'assets/forest.glb') {
   for (const o of [...W.clusters, ...W.dust, ...W.ribbons, ...W.boops, ...W.dandelions]) o.userData.mats = ownMaterials(o);
   for (const o of W.dust) o.userData.mats.forEach((m) => shaderMats.push(m));
   for (const o of W.ribbons) o.userData.mats.forEach((m) => shaderMats.push(m));
-  for (const n of ['LoneMushrooms', 'Crystals', 'GlowRocks', 'Spores', 'PuffballsFar']) { const o = get(n); if (o) { W.dim[n] = o; o.userData.mats = ownMaterials(o); } }
+  for (const n of ['LoneMushrooms', 'Crystals', 'GlowRocks', 'Spores']) { const o = get(n); if (o) { W.dim[n] = o; o.userData.mats = ownMaterials(o); } }
   const puffMats = []; // all puffballs dim together
   const shared = new Map();
   for (const p of W.puffs) p.traverse((m) => { if (m.isMesh) { if (!shared.has(m.material)) { const c = m.material.clone(); c.userData.baseEmissive = c.emissiveIntensity; shared.set(m.material, c); puffMats.push(c); } m.material = shared.get(m.material); } });

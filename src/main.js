@@ -17,13 +17,11 @@ import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { Stars } from './stars.js';
 import { Choice } from './choice.js';
-import { applyV2 } from './v2.js';
 import { tweens, clamp } from './util.js';
 import { loadState, beginNight, saveState, wateredTonight, nightKey } from './save.js';
 
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
-const V2 = params.has('v2'); // preview of the new environment
 // Options chosen on the start screen (remembered on this device)
 const OPT_KEY = 'lightsout.options';
 const options = (() => { try { return { look: false, sit: false, bright: false, volume: 0.8, ...JSON.parse(localStorage.getItem(OPT_KEY) || '{}') }; } catch { return { look: false, sit: false, bright: false, volume: 0.8 }; } })();
@@ -78,17 +76,15 @@ let time = 0, xrFrames = 0;
 
 async function init() {
   try {
-    W = await loadWorld(scene, (k) => { ui.bar.style.width = `${Math.round(k * 100)}%`; }, V2 ? 'assets/forest_v2.glb' : 'assets/forest.glb');
+    W = await loadWorld(scene, (k) => { ui.bar.style.width = `${Math.round(k * 100)}%`; });
   } catch (e) {
     console.error(e); ui.status.textContent = 'The forest could not load. Check your connection and refresh.'; return;
   }
   ui.bar.style.width = '100%';
-  if (V2) applyV2(W, scene);
   sleep = new Sleep(W, 12);
   touch = new Touch(W, sound, effects);
   seed = new Seed(scene, W, state, sound, effects, touch);
   flies = new Fireflies(scene, sleep, sound);
-  if (V2) { flies.bugs = true; flies.lift = true; }
   rain = new Rain(scene, sound, effects, seed);
   input.addPicker((r) => choice.pickRay(r));
   input.addPicker((r) => (phase.mode === 'stars' ? stars.pick(r) : null));
