@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lights Out</title>
+<style>
+  :root { --ink: #efe9ff; --soft: #b9b0d6; --mint: #8ff5d4; --pink: #ffa6d8; --bg: #07060d; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; overflow: hidden; }
+  canvas { display: block; }
+  #overlay { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, #1a1430 0%, #07060d 70%); transition: opacity 1.6s ease; z-index: 10; }
+  #overlay.gone { opacity: 0; pointer-events: none; }
+  .card { text-align: center; max-width: 30rem; padding: 2rem 1.5rem; }
+  h1 { font-weight: 400; font-size: clamp(2.4rem, 7vw, 3.6rem); letter-spacing: 0.04em; margin: 0 0 0.6rem; text-shadow: 0 0 24px rgba(143,245,212,0.35); }
+  p { color: var(--soft); line-height: 1.55; margin: 0 0 1.6rem; font-size: 1.05rem; }
+  .track { height: 3px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; margin: 0 auto 1.6rem; width: 70%; }
+  #bar { height: 100%; width: 0; background: linear-gradient(90deg, var(--mint), var(--pink)); transition: width 0.3s; }
+  #status { color: var(--soft); font-size: 0.9rem; min-height: 1.2em; margin-bottom: 1.4rem; font-style: italic; }
+  button { font: inherit; font-size: 1.05rem; color: var(--ink); background: rgba(143,245,212,0.08); border: 1px solid rgba(143,245,212,0.35); border-radius: 999px; padding: 0.8rem 1.6rem; margin: 0.35rem; cursor: pointer; transition: background 0.3s, border-color 0.3s; }
+  button:hover:not(:disabled) { background: rgba(143,245,212,0.16); border-color: rgba(143,245,212,0.6); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.quiet { background: transparent; border-color: rgba(255,255,255,0.18); }
+  .opts { display: grid; gap: 0.55rem; text-align: left; margin: 1.6rem auto 0; max-width: 21rem; font-size: 0.95rem; color: var(--soft); }
+  .opts label { display: flex; align-items: center; gap: 0.7rem; cursor: pointer; line-height: 1.35; }
+  .opts input[type=checkbox] { width: 1.15rem; height: 1.15rem; accent-color: #8ff5d4; flex: none; }
+  .opts .vol { display: flex; align-items: center; gap: 0.7rem; }
+  .opts input[type=range] { flex: 1; accent-color: #8ff5d4; }
+  .opts small { display: block; color: #8d85ad; font-size: 0.8rem; }
+  .foot { margin-top: 1.6rem; font-size: 0.85rem; color: #8d85ad; }
+  #hint { position: fixed; bottom: 1.4rem; left: 50%; transform: translateX(-50%); color: var(--soft); font-size: 0.95rem; opacity: 0; transition: opacity 1.2s; pointer-events: none; }
+  #hint.show { opacity: 0.85; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="overlay"><div class="card">
+  <h1>Lights Out</h1>
+  <p>A quiet night in a glowing forest.<br>Sit comfortably. Your hands are all you need.</p>
+  <div class="track"><div id="bar"></div></div>
+  <div id="status">Gathering the forest…</div>
+  <button id="enter-vr" disabled>Enter the forest</button>
+  <button id="enter-screen" class="quiet" disabled>Look around on this screen</button>
+  <div class="opts" role="group" aria-label="Options">
+    <label><input type="checkbox" id="opt-look"><span>Look to select<small>No hands needed: look at something until its ring fills</small></span></label>
+    <label><input type="checkbox" id="opt-sit"><span>Just sit<small>No tasks: the forest falls asleep on its own</small></span></label>
+    <label><input type="checkbox" id="opt-bright"><span>Brighter glow<small>Larger glowdrops and brighter things to touch</small></span></label>
+    <div class="vol"><span>Volume</span><input type="range" id="opt-volume" min="0" max="1" step="0.05" value="0.8" aria-label="Volume"></div>
+  </div>
+  <div class="foot">Best with headphones. Everything works with one hand.</div>
+</div></div>
+<div id="hint">Drag to look around · Click to touch</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
