@@ -4,6 +4,7 @@
 // of the forest sleeps with them. If not, they fade back to gold and wait. No timer, no score, no fail.
 import * as THREE from 'three';
 import { glowTexture, rand, clamp } from './util.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const HIDDEN = new THREE.Color(1.0, 0.9, 0.62);    // plain firefly glow: pale gold, so every colour stands out from it
 const CORE = new THREE.Color(1.0, 0.98, 0.8);
@@ -18,9 +19,11 @@ export const COLOURS = [
 ];
 
 // A gentle arc in front of you, at seated reach (player faces -Z): rows x columns, slightly staggered.
-function arcSlots(n) {
+function arcSlots(n, lift = false) {
   const rows = n > 12 ? 3 : 2, cols = Math.ceil(n / rows);
-  const span = n > 24 ? 124 : n > 12 ? 104 : n > 6 ? 80 : 64, R = n > 12 ? 0.56 : 0.52, ys = rows === 3 ? [0.86, 1.04, 1.22] : [0.94, 1.12];
+  const span = n > 24 ? 124 : n > 12 ? 104 : n > 6 ? 80 : 64, R = n > 12 ? 0.56 : 0.52;
+  // lifted: at eye level, in front of the dark treeline instead of the glowing ground
+  const ys = lift ? (rows === 3 ? [1.08, 1.26, 1.44] : [1.16, 1.34]) : (rows === 3 ? [0.86, 1.04, 1.22] : [0.94, 1.12]);
   const out = [];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols && out.length < n; c++) {
     const a = THREE.MathUtils.degToRad(-span / 2 + span * (c + (r % 2 ? 0.5 : 0.25)) / cols);
@@ -40,6 +43,37 @@ export class Fireflies {
     this.onMatch = null; this.onMiss = null; this.onAllDone = null; this.onPeek = null; this.onPeekEnd = null;
     this.peekT = 0; this.peekDur = 10; this.peeked = false;
     this.sinceMatch = 0;
+    this.bugs = false; this.lift = false; this.bugMesh = null;
+  }
+
+  // Little firefly bodies, all drawn together (three draws for every bug): body, lantern, wings.
+  _makeBugs() {
+    const N = 32, parts = [];
+    const part = (sx, sy, sz, x, y, z, rgb, rz = 0) => {
+      const g = new THREE.SphereGeometry(1, 10, 8); g.scale(sx, sy, sz); g.rotateZ(rz); g.translate(x, y, z);
+      const c = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < c.length; i += 3) { c[i] = rgb[0]; c[i + 1] = rgb[1]; c[i + 2] = rgb[2]; }
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g;
+    };
+    // forward is +Z (the head); the lantern is the tip of the abdomen at -Z
+    parts.push(part(0.0062, 0.0052, 0.0105, 0, 0, 0.002, [0.09, 0.07, 0.05]));          // body
+    parts.push(part(0.0068, 0.0028, 0.0062, 0, 0.0034, 0.0125, [0.85, 0.45, 0.28]));  // pinkish-orange head shield
+    parts.push(part(0.0016, 0.0012, 0.0012, 0, 0.0046, 0.0128, [0.12, 0.05, 0.04]));  // its dark spot
+    parts.push(part(0.0034, 0.0032, 0.0034, 0, -0.0006, 0.0185, [0.06, 0.05, 0.04])); // head
+    parts.push(part(0.0016, 0.0016, 0.0016, 0.0024, 0.0008, 0.0205, [0.9, 0.85, 0.7])); // eyes
+    parts.push(part(0.0016, 0.0016, 0.0016, -0.0024, 0.0008, 0.0205, [0.9, 0.85, 0.7]));
+    parts.push(part(0.0038, 0.0016, 0.0125, 0.0031, 0.0042, -0.003, [0.16, 0.12, 0.08], 0.25)); // wing cases
+    parts.push(part(0.0038, 0.0016, 0.0125, -0.0031, 0.0042, -0.003, [0.16, 0.12, 0.08], -0.25));
+    const body = mergeGeometries(parts);
+    const bodyMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.bugMesh = new THREE.InstancedMesh(body, bodyMat, N);
+    const lantern = new THREE.SphereGeometry(1, 12, 10); lantern.scale(0.0055, 0.0048, 0.0075); lantern.translate(0, -0.0008, -0.0125);
+    this.lanternMesh = new THREE.InstancedMesh(lantern, new THREE.MeshBasicMaterial({ color: 0xffffff }), N);
+    const w = new THREE.PlaneGeometry(0.011, 0.02); w.rotateX(-Math.PI / 2);
+    const wl = w.clone(); wl.rotateZ(0.5); wl.translate(0.007, 0.006, -0.004); const wr = w.clone(); wr.rotateZ(-0.5); wr.translate(-0.007, 0.006, -0.004);
+    this.wingMesh = new THREE.InstancedMesh(mergeGeometries([wl, wr]), new THREE.MeshBasicMaterial({ color: 0xcfd8ff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }), N);
+    for (const m of [this.bugMesh, this.lanternMesh, this.wingMesh]) { m.count = 0; m.frustumCulled = false; this.scene.add(m); }
+    this.lanternMesh.setColorAt(0, new THREE.Color(1, 1, 1));
+    this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new THREE.Vector3(); this._e = new THREE.Euler();
   }
 
   get outCount() { return this.matched; }
@@ -50,10 +84,11 @@ export class Fireflies {
   // pairs: how many pairs to find (24 fireflies = 12 pairs)
   startMemory(pairs, memorize = 10) {
     this.clear();
+    if (this.bugs && !this.bugMesh) this._makeBugs();
     this.peekDur = memorize; this.peekT = 0; this.peeked = false;
     this.pairs = pairs; this.matched = 0; this.misses = 0; this.shown = []; this.active = true; this.sinceMatch = 0; this.doneFired = false;
     const n = pairs * 2;
-    const slots = shuffle(arcSlots(n));
+    const slots = shuffle(arcSlots(n, this.lift));
     const colourOf = []; for (let p = 0; p < pairs; p++) colourOf.push(p % COLOURS.length, p % COLOURS.length);
     shuffle(colourOf);
     const homes = this.sleep.order.map((gi) => this.sleep.homeOf(gi));
@@ -76,6 +111,7 @@ export class Fireflies {
     this.list.push({
       g, body, halo, core, from, mid, to, ci, t: -delay, dur: this.fast ? rand(1.8, 2.4) : clamp(from.distanceTo(to) / 2.4, 3, 6),
       state: 'fly', light: 0, ph: Math.random() * 10, reveal: 0, hint: 0, outT: 0, held: false, inside: [false, false], r: 0.045 * k,
+      turn: 0, yaw: 0, prev: from.clone(), size: (this.big ? 1.3 : 1) * 1.15,
     });
   }
 
@@ -119,6 +155,7 @@ export class Fireflies {
         if (f.outT > 0.6) { f.g.position.y -= dt * 0.1; f.g.position.z -= dt * 0.06; }
         if (f.outT > 4) { this.scene.remove(f.g); f.halo.material.dispose(); f.core.material.dispose(); this.list.splice(i, 1); continue; }
       }
+      if (this.bugs) this._pose(f, dt);
       // colour: gold while hidden, its own colour while shown (or hinted)
       const want = f.state === 'shown' || f.state === 'pair' || f.state === 'out' ? 1 : 0;
       f.reveal += (want - f.reveal) * Math.min(1, dt * (want ? 8 : 2.5));
@@ -133,9 +170,61 @@ export class Fireflies {
       f.halo.material.opacity = Math.min(1, (0.85 + 0.15 * show) * L); f.core.material.opacity = Math.min(1, 1.1 * L);
       f.halo.scale.setScalar(0.1 * (this.big ? 1.3 : 1) * (0.9 + 0.8 * show + (f.state === 'pair' ? 0.3 : 0)));
       f.core.scale.setScalar(0.024 * (this.big ? 1.3 : 1) * (1 + 0.6 * show));
-      f.body.visible = f.state === 'out' && f.light < 0.5;
+      f.body.visible = !this.bugs && f.state === 'out' && f.light < 0.5;
+      if (this.bugs) {
+        // facing you, the lantern is hidden behind the body: only a soft glow spills round it
+        const back = f.turn;
+        f.halo.material.opacity *= 0.35 + 0.65 * back; f.core.material.opacity *= back;
+        f.show = show;
+      }
     }
+    if (this.bugs && this.bugMesh) this._drawBugs(time);
     if (this.allDone && !this.doneFired && !this.list.some((f) => f.state === 'pair')) { this.doneFired = true; if (this.onAllDone) this.onAllDone(); }
+  }
+
+  // Each bug faces you while it waits (its lantern hidden), and turns round to show its glowing
+  // backside when it shows its colour: while you remember, when booped, and when it finds its pair.
+  _pose(f, dt) {
+    const p = f.g.position, eye = new THREE.Vector3(0, 1.2, 0);
+    const vel = p.clone().sub(f.prev); f.prev.copy(p);
+    let face;
+    if (f.state === 'fly' && vel.lengthSq() > 1e-7) face = Math.atan2(vel.x, vel.z);
+    else { const d = eye.clone().sub(p); face = Math.atan2(d.x, d.z); }
+    const showing = f.state === 'shown' || f.state === 'pair' || f.state === 'out' || (this.peekT > 0 && f.state === 'wait') || f.hint > 0.4;
+    const target = showing && f.state !== 'fly' ? 1 : 0;
+    f.turn += (target - f.turn) * Math.min(1, dt * 4.5);
+    let d = face - f.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); f.yaw += d * Math.min(1, dt * 6);
+    const yaw = f.yaw + f.turn * Math.PI;
+    // the glow sits at the tip of the abdomen, wherever the bug is facing
+    const off = -0.0125 * f.size;
+    for (const s of [f.halo, f.core]) s.position.set(Math.sin(yaw) * off, -0.001, Math.cos(yaw) * off);
+    f.drawYaw = yaw;
+  }
+
+  _drawBugs(time) {
+    let n = 0;
+    const col = new THREE.Color();
+    for (const f of this.list) {
+      if (!f.g.visible) continue;
+      const fade = f.state === 'out' ? Math.max(0, 1 - Math.max(0, f.outT - 2.5) / 1.5) : 1;
+      if (fade <= 0) continue;
+      this._q.setFromEuler(this._e.set(0, f.drawYaw || 0, 0));
+      this._s.setScalar(f.size * fade);
+      this._m.compose(f.g.position, this._q, this._s);
+      this.bugMesh.setMatrixAt(n, this._m);
+      this.lanternMesh.setMatrixAt(n, this._m);
+      // wings flutter (fast while flying, a slow shimmer while hovering)
+      const flap = f.state === 'fly' ? 0.55 + 0.45 * Math.sin(time * 38 + f.ph) : 0.85 + 0.15 * Math.sin(time * 6 + f.ph);
+      this._s.set(f.size * fade * flap, f.size * fade, f.size * fade);
+      this._m.compose(f.g.position, this._q, this._s);
+      this.wingMesh.setMatrixAt(n, this._m);
+      const s = f.show || 0, L = f.light;
+      col.copy(HIDDEN).lerp(COLOURS[f.ci].c, s).multiplyScalar(0.25 + 0.95 * L);
+      this.lanternMesh.setColorAt(n, col);
+      n++;
+    }
+    for (const m of [this.bugMesh, this.lanternMesh, this.wingMesh]) { m.count = n; m.instanceMatrix.needsUpdate = true; }
+    if (this.lanternMesh.instanceColor) this.lanternMesh.instanceColor.needsUpdate = true;
   }
 
   _touch(f, input) {
