@@ -12,13 +12,24 @@ export class Rain {
     this.drops = [];
     for (let i = 0; i < N; i++) this.drops.push(this._respawn({}, true));
     this.geo = new THREE.BufferGeometry(); this.geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.mat = new THREE.LineBasicMaterial({ color: 0x9fc4ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+    this.mat = new THREE.LineBasicMaterial({ color: 0xa8d0ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
     this.lines = new THREE.LineSegments(this.geo, this.mat); this.lines.frustumCulled = false; this.lines.visible = false;
     scene.add(this.lines);
+    // the water you catch: a little pool of clear blue water sitting in your palm, filling up as you catch,
+    // with a bright rippling surface and raindrops you can see falling into it and splashing
+    const dome = new THREE.SphereGeometry(1, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    const dropGeo = new THREE.SphereGeometry(1, 8, 6);
     this.palms = [0, 1].map(() => {
-      const m = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ color: 0x8fc8ff, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-      m.visible = false; scene.add(m);
-      return { mesh: m, water: 0, pouring: false, stop: null, dripT: 0 };
+      const g = new THREE.Group(); g.visible = false; scene.add(g);
+      const body = new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ color: 0x2f8cff, transparent: true, opacity: 0.78, depthWrite: false, side: THREE.DoubleSide }));
+      body.rotation.x = Math.PI / 2; // the dome bulges out of the palm
+      const shine = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.95, 28), new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      const glint = new THREE.Mesh(new THREE.CircleGeometry(0.22, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      glint.position.set(-0.3, 0.3, 0.02);
+      const surf = new THREE.Group(); surf.add(shine, glint);
+      g.add(body, surf);
+      const drops = [0, 1, 2, 3, 4, 5].map(() => { const d = new THREE.Mesh(dropGeo, new THREE.MeshBasicMaterial({ color: 0x9fd4ff, transparent: true, opacity: 0.9, depthWrite: false })); d.visible = false; d.scale.set(0.0035, 0.011, 0.0035); scene.add(d); return { m: d, y: 0, on: false }; });
+      return { g, body, surf, shine, drops, water: 0, pouring: false, stop: null, dripT: 0, dropT: 0 };
     });
     this.tmpQ = new THREE.Quaternion();
   }
@@ -40,7 +51,7 @@ export class Rain {
     this.time += dt;
     this.level = damp(this.level, this.target, 0.35, dt);
     this.sound.rain(this.level);
-    this.mat.opacity = 0.32 * this.level;
+    this.mat.opacity = 0.45 * this.level; // a little easier to see
     if (this.level < 0.01 && this.target === 0) this.lines.visible = false;
     if (this.lines.visible) {
       const p = this.geo.attributes.position.array, live = Math.floor(N * this.level);
@@ -55,11 +66,20 @@ export class Rain {
     // Catching and pouring with each hand.
     input.hands.forEach((h, i) => {
       const P = this.palms[i];
-      if (!h.present) { P.mesh.visible = false; if (P.stop) { P.stop(); P.stop = null; } return; }
+      if (!h.present) { P.g.visible = false; for (const d of P.drops) { d.on = false; d.m.visible = false; } if (P.stop) { P.stop(); P.stop = null; } return; }
       const up = h.palmNormal.y;
       if (this.level > 0.3 && up > 0.55) {
         P.water = Math.min(1, P.water + dt * this.catchRate * this.level);
         P.dripT -= dt; if (P.dripT <= 0) { P.dripT = rand(0.25, 0.6); this.sound.drip(h.palm); }
+        // a raindrop you can see, falling into your hand
+        P.dropT -= dt;
+        if (P.dropT <= 0) { P.dropT = rand(0.08, 0.2); const d = P.drops.find((x) => !x.on); if (d) { d.on = true; d.y = rand(0.25, 0.45); d.ox = rand(-0.025, 0.025); d.oz = rand(-0.025, 0.025); d.m.visible = true; } }
+      }
+      for (const d of P.drops) {
+        if (!d.on) continue;
+        d.y -= dt * 2.6;
+        d.m.position.set(h.palm.x + d.ox, h.palm.y + 0.012 + Math.max(0, d.y), h.palm.z + d.oz);
+        if (d.y <= 0) { d.on = false; d.m.visible = false; this.effects.sparkle(d.m.position.clone(), 0x9fd4ff, 4, 0.02); }
       }
       const pouring = P.water > 0.03 && up < 0.2;
       if (pouring) {
@@ -71,12 +91,17 @@ export class Rain {
         const horiz = Math.hypot(lip.x - tgt.x, lip.z - tgt.z);
         if (horiz < 0.22 && lip.y > tgt.y - 0.02) { this.seed.receiveWater(flow * 1.6); if (this.onPour) this.onPour(); }
       } else if (P.stop) { P.stop(); P.stop = null; }
-      P.mesh.visible = P.water > 0.02;
-      if (P.mesh.visible) {
-        P.mesh.position.copy(h.palm).addScaledVector(h.palmNormal, 0.012);
-        P.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), h.palmNormal);
-        P.mesh.scale.setScalar(0.018 + 0.03 * P.water);
-        P.mesh.material.opacity = 0.35 + 0.3 * Math.sin(this.time * 3) * 0.2 + 0.25 * P.water;
+      P.g.visible = P.water > 0.02;
+      if (P.g.visible) {
+        // the pool grows wider and deeper as you catch more
+        const r = 0.022 + 0.026 * P.water, depth = 0.004 + 0.016 * P.water;
+        P.g.position.copy(h.palm).addScaledVector(h.palmNormal, 0.008);
+        P.g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), h.palmNormal);
+        P.body.scale.set(r, depth, r);
+        P.surf.position.z = depth; P.surf.scale.setScalar(r * (1 + 0.04 * Math.sin(this.time * 7)));
+        P.shine.rotation.z = this.time * 0.6;
+        P.shine.material.opacity = 0.35 + 0.2 * Math.sin(this.time * 5);
+        P.body.material.opacity = 0.62 + 0.25 * P.water;
       }
     });
   }

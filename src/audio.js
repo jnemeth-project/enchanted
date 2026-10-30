@@ -82,6 +82,28 @@ export class Sound {
   }
 
   // A light going out (a firefly or a star): a soft breath of air and a low note that settles down.
+  // one soft raindrop tapping a leaf somewhere near you
+  _pat() {
+    const ctx = this.ctx, t = ctx.currentTime, a = Math.random() * Math.PI * 2, r = 1 + Math.random() * 4;
+    const out = this._out({ x: Math.cos(a) * r, y: 0.5 + Math.random() * 2, z: Math.sin(a) * r });
+    const n = this._src(this.white); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1400 + Math.random() * 1800; bp.Q.value = 2.5;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05 + Math.random() * 0.05, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    n.connect(bp); bp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.09);
+  }
+
+  // a magical crystal shimmer: bell-like partials that ring and fade, with a little sparkle on top
+  chime(pos, baseHz = 523.25) {
+    if (!this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
+    const g = ctx.createGain(); g.connect(out);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6);
+    for (const [mult, amp, d] of [[1, 1, 0], [2.01, 0.45, 0.04], [3.02, 0.25, 0.09], [4.17, 0.12, 0.15], [1.5, 0.3, 0.22]]) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = baseHz * mult;
+      const a = ctx.createGain(); a.gain.setValueAtTime(0.0001, t); a.gain.exponentialRampToValueAtTime(amp, t + d + 0.02); a.gain.exponentialRampToValueAtTime(0.0001, t + d + 2.2);
+      o.connect(a); a.connect(g); o.start(t); o.stop(t + 2.7);
+    }
+  }
+
   hush(pos, baseHz = 196) {
     if (!this.enabled) return;
     const ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
@@ -121,10 +143,10 @@ export class Sound {
     const f0 = 650 + Math.random() * 200;
     bp.frequency.setValueAtTime(f0 * 1.25, t); bp.frequency.exponentialRampToValueAtTime(f0 * 0.75, t + 0.9);
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1300;
-    const g = ctx.createGain(); this._env(g, t, 0.22, 0.04 + 0.06 * Math.min(1, intensity), 0.85);
+    const g = ctx.createGain(); this._env(g, t, 0.22, 0.09 + 0.12 * Math.min(1, intensity), 0.85);
     n.connect(bp); bp.connect(lp); lp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 1.3);
     const b = this._src(this.brown); const blp = ctx.createBiquadFilter(); blp.type = 'lowpass'; blp.frequency.value = 500;
-    const bg = ctx.createGain(); this._env(bg, t, 0.25, 0.06, 0.8);
+    const bg = ctx.createGain(); this._env(bg, t, 0.25, 0.12, 0.8);
     b.connect(blp); blp.connect(bg); bg.connect(out); b.start(t, Math.random() * 2); b.stop(t + 1.3);
   }
 
@@ -183,11 +205,14 @@ export class Sound {
       const lg = ctx.createGain(); lg.gain.value = 0.9; low.connect(llp); llp.connect(lg); lg.connect(g); low.start();
       const air = this._src(this.white, true);
       const ahp = ctx.createBiquadFilter(); ahp.type = 'highpass'; ahp.frequency.value = 250;
-      const alp = ctx.createBiquadFilter(); alp.type = 'lowpass'; alp.frequency.value = 1100; alp.Q.value = 0.3;
-      const ag = ctx.createGain(); ag.gain.value = 0.18; air.connect(ahp); ahp.connect(alp); alp.connect(ag); ag.connect(g); air.start();
+      const alp = ctx.createBiquadFilter(); alp.type = 'lowpass'; alp.frequency.value = 2200; alp.Q.value = 0.3;
+      const ag = ctx.createGain(); ag.gain.value = 0.42; air.connect(ahp); ahp.connect(alp); alp.connect(ag); ag.connect(g); air.start();
       this._rain = g;
     }
-    this._rain.gain.setTargetAtTime(Math.max(0.0001, level * 0.07), ctx.currentTime, 2.0);
+    this._rain.gain.setTargetAtTime(Math.max(0.0001, level * 0.2), ctx.currentTime, 2.0);
+    // and soft individual drops pattering on leaves around you
+    this._patT = (this._patT || 0) - 1 / 60;
+    if (level > 0.2 && this._patT <= 0) { this._patT = 0.03 + Math.random() * 0.09 / level; this._pat(); }
   }
 
   drip(pos) { // a tiny soft tick of a raindrop landing in a palm

@@ -16,10 +16,10 @@ import { Guide } from './guide.js';
 import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { SkyGames } from './skygames.js';
-import { Twirls, Pebbles } from './play.js';
+import { Twirls, Pebbles, Crystals, PotHint, DirtDrawing } from './play.js';
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
-import { tweens, clamp } from './util.js';
+import { tweens, clamp, glowTexture } from './util.js';
 import { loadState, beginNight, saveState, wateredTonight, nightKey } from './save.js';
 
 const params = new URLSearchParams(location.search);
@@ -42,7 +42,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
-renderer.xr.setFoveation(1);
+renderer.xr.setFoveation(0); // full, sharp vision; "Soft edges" in the options blurs the edges for comfort
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -72,7 +72,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, potHint, dirt;
 const phase = { name: 'loading', t: 0, rainT: 0, mode: null };
 const session = { t: 0, len: 600, warned: false };
 const remaining = () => session.len - session.t;
@@ -92,7 +92,14 @@ async function init() {
   flies = new Fireflies(scene, sleep, sound);
   rain = new Rain(scene, sound, effects, seed);
   menu = new Menu(scene, W, input, sound);
-  twirls = new Twirls(W, sound, effects); pebbles = new Pebbles(W, sound, effects);
+  twirls = new Twirls(W, sound, effects); pebbles = new Pebbles(W, sound, effects); crystals = new Crystals(W, sound, effects);
+  dirt = new DirtDrawing(scene, W, sound, effects);
+  // the pot explains itself: a little star above it; look at it (or touch it) to read what it is for
+  potHint = new PotHint(scene, seed, glowTexture());
+  potHint.visibleWhen = () => phase.name !== 'rain' && phase.name !== 'goodnight' && phase.name !== 'loading' && !SKY(phase.mode);
+  potHint.onShow = () => say('Your magic mushroom pot\nAt the end of every session, rain falls\nCup your hands to catch the water\nthen tip it into the pot\nWater it each time you visit\nand a magic mushroom will grow', { width: 1.25, hold: 9 });
+  menu.softEdges = !!options.soft;
+  menu.onSoftEdges = (on) => { options.soft = on; renderer.xr.setFoveation(on ? 1 : 0); try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
   menu.volume = options.volume; menu.muted = !!options.muted;
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
   menu.onMainMenu = toMainMenu; menu.onSwap = swapMode;
@@ -102,6 +109,8 @@ async function init() {
   input.addPicker((r) => (SKY(phase.mode) ? sky.pick(r) : null), { ui: true });
   input.addPicker((r) => flies.pick(r));
   input.addPicker((r) => pebbles.pick(r));
+  input.addPicker((r) => potHint.pick(r));
+  input.addPicker((r) => crystals.pick(r));
   input.addPicker((r) => seed.pick(r));
   input.addPicker((r) => rain.pick(r));
   input.addPicker((r) => touch.pick(r));
@@ -145,16 +154,17 @@ function begin() {
 
 function readOptions() {
   const q = (id) => document.getElementById(id);
-  if (q('opt-look')) { options.look = q('opt-look').checked; options.sit = q('opt-sit').checked; options.bright = q('opt-bright').checked; options.volume = +q('opt-volume').value; }
+  if (q('opt-look')) { options.look = q('opt-look').checked; options.sit = q('opt-sit').checked; options.bright = q('opt-bright').checked; options.soft = !!(q('opt-soft') && q('opt-soft').checked); options.volume = +q('opt-volume').value; }
   const sel = document.querySelector('#session button.on'); if (sel) options.session = +sel.dataset.min;
   try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {}
   JUST_SIT = options.sit;
   if (JUST_SIT) TUTORIAL = false;
   gaze.enabled = options.look;
+  renderer.xr.setFoveation(options.soft ? 1 : 0);
   if (flies) flies.big = options.bright;
   if (touch) touch.highlight = options.bright ? 0.35 : 0;
 }
-for (const [id, key] of [['opt-look', 'look'], ['opt-sit', 'sit'], ['opt-bright', 'bright']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
+for (const [id, key] of [['opt-look', 'look'], ['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-soft', 'soft']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
 { const v = document.getElementById('opt-volume'); if (v) v.value = options.volume; }
 // how long tonight's session lasts: 5, 10, 15 or 20 minutes (remembered)
 for (const b of document.querySelectorAll('#session button')) {
@@ -458,7 +468,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles });
+  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, potHint, dirt });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -493,7 +503,8 @@ function step(dt) {
     seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); pebbles.update(dt, input);
+    twirls.update(dt, input); pebbles.update(dt, input); crystals.update(dt, input); dirt.update(dt, input);
+    potHint.update(dt, time, input, eyeRay);
     menu.update(dt, input);
     if (phase.name !== 'goodnight') session.t += dt;
     sky.ownDwell = !gaze.enabled;

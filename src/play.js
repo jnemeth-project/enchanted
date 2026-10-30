@@ -15,13 +15,14 @@ export class Twirls {
     this.items = [...W.dust, ...W.ribbons].map((o) => {
       const c = o.getWorldPosition(new THREE.Vector3()), s = o.getWorldScale(new THREE.Vector3());
       o.userData.spin = 0;
-      return { o, c, r: 0.72 * s.x, h: 1.5 * s.z };
+      return { o, c, r: 0.72 * s.x, h: 1.5 * s.z, inHand: [false, false], cool: 0 };
     });
     this.prev = [null, null];
   }
 
   update(dt, input) {
     this.chimeT = Math.max(0, this.chimeT - dt);
+    for (const it of this.items) if (it.cool > 0) it.cool -= dt;
     input.hands.forEach((h, i) => {
       if (!h.present) { this.prev[i] = null; return; }
       const p = h.index.clone(), last = this.prev[i]; this.prev[i] = p;
@@ -32,7 +33,15 @@ export class Twirls {
       for (const it of this.items) {
         tmp.subVectors(p, it.c);
         const d2 = tmp.x * tmp.x + tmp.z * tmp.z;
-        if (d2 > it.r * it.r * 1.3 || tmp.y < -0.1 || tmp.y > it.h) continue;
+        const inside = d2 <= it.r * it.r * 1.3 && tmp.y >= -0.1 && tmp.y <= it.h;
+        // reaching into the fairy dust: a burst of sparkles and a bright little chime
+        if (inside && !it.inHand[i] && (!it.cool || it.cool <= 0)) {
+          it.cool = 0.6; it.o.userData.spin += (Math.random() < 0.5 ? -1 : 1) * 3;
+          if (this.effects) this.effects.sparkle(p.clone(), 0xc8fff0, 30, 0.12);
+          this.sound.chime(p, [784, 880, 988, 1175, 1319][Math.floor(Math.random() * 5)]);
+        }
+        it.inHand[i] = inside;
+        if (!inside) continue;
         // how fast you are circling round the middle (radians a second), in the direction you move
         const w = (tmp.z * v.x - tmp.x * v.z) / (d2 + 0.02);
         it.o.userData.spin += THREE.MathUtils.clamp(w, -14, 14) * Math.min(1, dt * 5);
@@ -136,6 +145,151 @@ export class Pebbles {
         }
         if (k >= 1) { pb.state = 'rest'; pb.moved = false; o.scale.copy(pb.homeS); }
       }
+    }
+  }
+}
+
+
+// The crystals beside you: touch one and it lights up with a magical shimmer, then slowly settles.
+export class Crystals {
+  constructor(W, sound, effects) {
+    this.sound = sound; this.effects = effects;
+    const notes = [523.25, 587.33, 659.25, 783.99, 880];
+    this.list = W.crystals.map((o, i) => {
+      const box = new THREE.Box3().setFromObject(o), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+      const mats = [];
+      o.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); mats.push(m.material); m.material.userData.e0 = m.material.emissiveIntensity ?? 1; m.material.userData.c0 = m.material.emissive ? m.material.emissive.clone() : null; } });
+      return { o, c, r: Math.max(size.x, size.z) * 0.6 + 0.03, mats, glow: 0, inHand: [false, false], hz: notes[i % notes.length] };
+    });
+  }
+
+  light(cr) {
+    if (cr.glow > 0.6) return;
+    cr.glow = 1;
+    this.sound.chime(cr.c, cr.hz);
+    if (this.effects) this.effects.sparkle(cr.c.clone().add(new THREE.Vector3(0, 0.06, 0)), 0xffd6f4, 26, 0.12);
+  }
+
+  pick(ray) {
+    for (const cr of this.list) if (ray.distanceToPoint(cr.c) < cr.r) return { key: cr, size: cr.r, point: cr.c.clone(), fire: () => this.light(cr) };
+    return null;
+  }
+
+  update(dt, input) {
+    for (const cr of this.list) {
+      input.hands.forEach((h, i) => {
+        if (!h.present) { cr.inHand[i] = false; return; }
+        let inside = false; for (let k = 0; k < 5 && !inside; k++) if (h.tips[k].distanceTo(cr.c) < cr.r) inside = true;
+        if (inside && !cr.inHand[i]) this.light(cr);
+        cr.inHand[i] = inside;
+      });
+      if (cr.glow > 0) {
+        cr.glow = Math.max(0, cr.glow - dt / 3.5); // lit for a few seconds, then settles
+        const k = Math.sin(Math.min(1, cr.glow * 1.2) * Math.PI / 2);
+        for (const m of cr.mats) { m.emissiveIntensity = m.userData.e0 * (1 + 5 * k); if (m.userData.c0) m.emissive.copy(m.userData.c0).lerp(new THREE.Color(1, 0.85, 1), 0.35 * k); }
+      }
+    }
+  }
+}
+
+// The magic mushroom pot: a little star twinkles above it. Look at it (or touch it, or point and pinch)
+// and a few words explain what the pot is for, so nobody has to have seen the tutorial.
+export class PotHint {
+  constructor(scene, seed, tex) {
+    this.seed = seed; this.t = 0; this.look = 0; this.seen = false; this.cool = 0; this.onShow = null; this.visibleWhen = () => true;
+    this.at = seed.target.clone().add(new THREE.Vector3(0, 0.3, 0));
+    this.star = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffc95a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.core = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.star.position.copy(this.at); this.core.position.copy(this.at); this.star.renderOrder = this.core.renderOrder = 22;
+    scene.add(this.star, this.core);
+  }
+
+  _hits(ray) { return ray.distanceToPoint(this.at) < 0.09 || ray.distanceToPoint(this.seed.target) < 0.16; }
+
+  pick(ray) { return this.visibleWhen() && this._hits(ray) ? { key: 'potHint', size: 0.12, point: this.at.clone(), fire: () => this.show() } : null; }
+
+  show() { if (this.cool > 0) return; this.cool = 12; this.seen = true; this.look = 0; if (this.onShow) this.onShow(); }
+
+  update(dt, time, input, eyeRay) {
+    this.cool = Math.max(0, this.cool - dt);
+    const on = this.visibleWhen();
+    const a = on ? (this.seen ? 0.45 : 1) : 0;
+    this.t += ((a) - this.t) * Math.min(1, dt * 2);
+    // holding your gaze on it for a moment opens the explanation
+    const ray = eyeRay && eyeRay();
+    if (on && ray && this._hits(ray) && this.cool <= 0) { this.look += dt; if (this.look > 1.6) this.show(); } else this.look = Math.max(0, this.look - dt * 2);
+    if (on) input.hands.forEach((h) => { if (h.present && (h.index.distanceTo(this.at) < 0.06)) this.show(); });
+    const pulse = 0.75 + 0.25 * Math.sin(time * 2.2), grow = 1 + 0.8 * Math.min(1, this.look / 1.6);
+    this.star.material.opacity = 0.75 * this.t * pulse; this.core.material.opacity = 0.95 * this.t;
+    this.star.scale.setScalar(0.14 * grow * (0.9 + 0.2 * pulse)); this.core.scale.setScalar(0.035 * grow);
+    this.star.position.y = this.core.position.y = this.at.y + Math.sin(time * 1.3) * 0.012;
+    this.star.visible = this.core.visible = this.t > 0.01;
+  }
+}
+
+// Draw in the soft dirt in front of you with a fingertip; sweep your hand low and fast across it to wipe it clean.
+export class DirtDrawing {
+  constructor(scene, W, sound, effects) {
+    this.sound = sound; this.effects = effects;
+    this.w = 1.0; this.d = 0.62; this.centre = new THREE.Vector3(0, 0, -0.55);
+    // the drawing surface hugs the ground: a fine grid whose every point sits just on the path
+    const ground = [W.byName.Ground].filter(Boolean), ray = new THREE.Raycaster();
+    const NX = 28, NZ = 18, geo = new THREE.PlaneGeometry(this.w, this.d, NX, NZ); geo.rotateX(-Math.PI / 2);
+    const pos = geo.attributes.position; this.NX = NX; this.NZ = NZ; this.hgt = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i) + this.centre.x, z = pos.getZ(i) + this.centre.z;
+      ray.set(new THREE.Vector3(x, 2, z), new THREE.Vector3(0, -1, 0)); const h = ray.intersectObjects(ground.length ? ground : W.grounds, true)[0];
+      const y = (h ? h.point.y : 0) + 0.007; pos.setY(i, y); this.hgt[i] = y;
+    }
+    pos.needsUpdate = true; geo.computeVertexNormals();
+    this.canvas = document.createElement('canvas'); this.canvas.width = 640; this.canvas.height = 400;
+    this.g = this.canvas.getContext('2d');
+    this.tex = new THREE.CanvasTexture(this.canvas); this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, fog: false }));
+    this.mesh.position.set(this.centre.x, 0, this.centre.z); this.mesh.renderOrder = 2;
+    scene.add(this.mesh);
+    this.last = [null, null]; this.prevPalm = [null, null]; this.scratchT = 0; this.wipe = 0; this.inked = false;
+  }
+
+  _groundAt(p) {
+    const fx = ((p.x - this.centre.x) / this.w + 0.5) * this.NX, fz = ((p.z - this.centre.z) / this.d + 0.5) * this.NZ;
+    const ix = Math.max(0, Math.min(this.NX, Math.round(fx))), iz = Math.max(0, Math.min(this.NZ, Math.round(fz)));
+    return this.hgt[iz * (this.NX + 1) + ix];
+  }
+
+  _uv(p) { return [((p.x - this.centre.x) / this.w + 0.5) * this.canvas.width, ((p.z - this.centre.z) / this.d + 0.5) * this.canvas.height]; }
+
+  update(dt, input) {
+    this.scratchT = Math.max(0, this.scratchT - dt);
+    input.hands.forEach((h, i) => {
+      if (!h.present) { this.last[i] = null; this.prevPalm[i] = null; return; }
+      const tip = h.index, inside = Math.abs(tip.x - this.centre.x) < this.w / 2 && Math.abs(tip.z - this.centre.z) < this.d / 2;
+      if (inside && tip.y < this._groundAt(tip) + 0.025) {
+        const [u, v] = this._uv(tip), g = this.g;
+        if (this.last[i]) {
+          const [u0, v0] = this.last[i];
+          // a groove in the dirt, with a faint magical glow running along its bottom
+          g.lineCap = 'round'; g.lineJoin = 'round';
+          g.strokeStyle = 'rgba(14, 8, 4, 0.9)'; g.lineWidth = 20; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
+          g.strokeStyle = 'rgba(150, 235, 255, 0.6)'; g.lineWidth = 6; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
+          this.tex.needsUpdate = true; this.inked = true;
+          if (this.scratchT <= 0 && Math.hypot(u - u0, v - v0) > 2) { this.scratchT = 0.25; this.sound.rustle(tip.clone(), 0.12); }
+        }
+        this.last[i] = [u, v];
+      } else this.last[i] = null;
+      // a swoosh: the whole hand sweeping fast and low over the dirt wipes it smooth
+      const palm = h.palm.clone(), pp = this.prevPalm[i]; this.prevPalm[i] = palm;
+      if (pp && this.inked && dt > 0) {
+        const v = Math.hypot(palm.x - pp.x, palm.z - pp.z) / dt;
+        const over = Math.abs(palm.x - this.centre.x) < this.w / 2 + 0.1 && Math.abs(palm.z - this.centre.z) < this.d / 2 + 0.1 && palm.y < this._groundAt(palm) + 0.12;
+        if (over && v > 1.1 && this.wipe <= 0) { this.wipe = 1; this.sound.whoosh(palm); if (this.effects) this.effects.sparkle(palm, 0xd9f6ff, 18, 0.15); }
+      }
+    });
+    if (this.wipe > 0) {
+      this.wipe -= dt / 0.6;
+      const g = this.g; g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 0, this.canvas.width, this.canvas.height); g.restore();
+      this.tex.needsUpdate = true;
+      if (this.wipe <= 0) { this.g.clearRect(0, 0, this.canvas.width, this.canvas.height); this.tex.needsUpdate = true; this.inked = false; this.wipe = 0; }
     }
   }
 }

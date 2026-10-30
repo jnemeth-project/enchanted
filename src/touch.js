@@ -3,6 +3,9 @@
 import * as THREE from 'three';
 import { Spring, worldSphere, parseJSON, tweens } from './util.js';
 
+// jewel hues a booped mushroom glows into: magenta, violet, electric blue, cyan, emerald, lime, amber, coral
+const VIVID = [0.9, 0.78, 0.62, 0.52, 0.4, 0.27, 0.11, 0.98];
+
 export class Touch {
   constructor(W, sound, effects) {
     this.W = W; this.sound = sound; this.effects = effects; this.count = 0; this.onAny = null;
@@ -57,6 +60,7 @@ export class Touch {
       it.spring.kick(-2.2); it.flash = 1; it.cool = 0.35;
       this.sound.boop(it.center, it.hz);
       this._recolor(it);
+      if (it.toColor) this.effects.sparkle(new THREE.Vector3(it.center.x, it.box ? it.box.max.y : it.center.y, it.center.z), it.toColor.getHex(), 22, 0.14);
     } else if (it.kind === 'fern') {
       const v = hand ? hand.palmVel : new THREE.Vector3(0.5, 0, 0);
       const speed = Math.min(1.5, v.length());
@@ -94,7 +98,7 @@ export class Touch {
       if (it.kind === 'boop') {
         const x = it.spring.update(dt); it.flash *= Math.exp(-dt * 3.5);
         it.o.scale.set(it.base.x * (1 - x * 0.05), it.base.y * (1 + x * 0.1), it.base.z * (1 - x * 0.05));
-        const k = 1 + it.flash * 0.9 + (it.invite || 0) * 0.7 + (this.highlight || 0);
+        const k = 1 + it.flash * 2.4 + (it.invite || 0) * 0.7 + (this.highlight || 0); // a bright flash of light on each boop
         for (const m of it.o.userData.mats) if (m.userData.baseEmissive !== undefined) m.emissiveIntensity = m.userData.baseEmissive * k * (it.dim ?? 1);
       } else if (it.kind === 'fern') {
         const ax = it.sx.update(dt), az = it.sz.update(dt);
@@ -137,19 +141,20 @@ export class Touch {
 
   // Each boop eases the mushroom into the next colour the magic mushroom can grow in.
   _recolor(it) {
-    if (!this.palette || !this.palette.length || !this.neutralMap || it.noRecolor) return;
+    if (!this.neutralMap || it.noRecolor) return;
     const mats = it.o.userData.mats || [];
     if (!it.tint) {
       const n = (mats[0] && mats[0].name) || '';
       const start = n.includes('Pink') ? [1, 0.55, 0.86] : n.includes('Lilac') ? [0.78, 0.62, 1] : [0.42, 1, 0.82];
-      it.tint = new THREE.Color(...start); it.ci = Math.floor(Math.random() * this.palette.length);
+      it.tint = new THREE.Color(...start); it.ci = Math.floor(Math.random() * VIVID.length);
       for (const m of mats) { m.map = this.neutralMap; m.emissiveMap = this.neutralMap; m.color.copy(it.tint); m.emissive.copy(it.tint); m.needsUpdate = true; }
     }
-    it.ci = (it.ci + 1) % this.palette.length;
-    const from = it.tint.clone(), to = new THREE.Color(...this.palette[it.ci].rgb);
-    { const h = {}; to.getHSL(h); to.setHSL(h.h, Math.min(1, h.s + 0.35), h.l * 0.78); } // as rich as the other mushrooms
+    // each boop: a vivid jewel colour (no washed-out pastels)
+    it.ci = (it.ci + 1 + Math.floor(Math.random() * (VIVID.length - 2))) % VIVID.length;
+    const from = it.tint.clone(), to = new THREE.Color().setHSL(VIVID[it.ci], 1.0, 0.5);
+    it.toColor = to;
     if (it.colorTween) it.colorTween.t = it.colorTween.duration;
-    it.colorTween = tweens.add(1.4, (k) => { it.tint.copy(from).lerp(to, k); for (const m of mats) { m.color.copy(it.tint); m.emissive.copy(it.tint).multiplyScalar(0.8); } });
+    it.colorTween = tweens.add(0.9, (k) => { it.tint.copy(from).lerp(to, k); for (const m of mats) { m.color.copy(it.tint); m.emissive.copy(it.tint).multiplyScalar(1.15); } });
   }
 
   _solid(hit) {

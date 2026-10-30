@@ -8,7 +8,7 @@ import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
 // bump this whenever the forest is re-exported, so headsets never keep showing an old saved copy
-export const FOREST_VERSION = 'pebbles3';
+export const FOREST_VERSION = 'crystals1';
 export const EYE = new THREE.Vector3(0, 0.9, 0); // sitting on the forest floor, not on a chair
 export const shaderMats = []; // every material with a `time` uniform
 
@@ -118,7 +118,7 @@ export async function loadWorld(scene, onProgress) {
 
   // Index everything by its role.
   const W = {
-    root, byName: {}, clusters: [], dust: [], ribbons: [], pebbles: [], boops: [], ferns: [], puffs: [], dandelions: [], dandelionSeeds: [],
+    root, byName: {}, clusters: [], dust: [], ribbons: [], pebbles: [], crystals: [], boops: [], ferns: [], puffs: [], dandelions: [], dandelionSeeds: [],
     magic: {}, dim: {}, grounds: [], sky: null, moon: {}, seat: new THREE.Vector3(),
   };
   const nodes = [];
@@ -130,6 +130,7 @@ export async function loadWorld(scene, onProgress) {
     else if (n.startsWith('G_FairyDust_')) W.dust.push(o);
     else if (n.startsWith('G_LightRibbon_')) W.ribbons.push(o);
     else if (n.startsWith('G_ThrowPebble_')) W.pebbles.push(o);
+    else if (n.startsWith('G_CrystalTouch_')) W.crystals.push(o);
     else if (n.startsWith('Boop_')) W.boops.push(o);
     else if (n.startsWith('Touch_Fern')) W.ferns.push(o);
     else if (n.startsWith('G_Puffball_')) W.puffs.push(o);
