@@ -17,7 +17,9 @@ On the start screen, choose how long you'd like to stay: 5, 10, 15 or 20 minutes
 - **Firefly memory.** The forest's glow quiets down and fireflies drift in to hover within reach. For ten seconds each one shows its colour: remember them. Then they all turn gold. Boop one to see its colour (and hear its note), then another: if they match, the pair goes to sleep together, and part of the forest with them. If not, they fade back and wait. No timer, no score; if you're stuck, a hidden pair briefly shimmers. You start with 10 fireflies; every board you finish brings the next level with two more pairs, for as long as your session lasts, with no limit (your level is remembered). Near the end of the session the fireflies drift home and soft rain comes: cup your hands, catch it, and tip it into the terracotta pot to grow your mushroom.
 ![Ten fireflies showing their colours for you to remember](docs/memory.jpg)
 
-- **Stargazing.** The trees overhead part and the sky opens. Lie back and enjoy: point at a star and pinch, and it goes to sleep. When the last star sleeps and there's still time, a new sky of stars wakes up.
+- **Stargazing.** The trees overhead part and a sky full of stars opens, Milky Way and all. Lie back and pick one of two gentle games, both played just by looking at a star for a moment (or pointing and pinching), so you never have to hold your arm up:
+  - **Counting stars:** stars wake one at a time; look at one and it settles into the sky as you count along. Each comes a little slower, and every ten the night grows darker. Counting sheep, under the stars.
+  - **Star pictures:** look at the glowing star and a trail of stardust joins it to the last, counting as you go, until a simple random picture appears (a teacup, a leaf, a sailboat...). Then a completely unrelated one begins, slower and dimmer. It is based on the "cognitive shuffle", a sleep technique that mimics how a drowsy mind drifts between unconnected thoughts.
 
 **Getting out, and options.** Built into the big tree to your right (modelled in Blender like the rest of the forest) is a little wooden door with lanterns, marked *Main menu*: point at it and pinch (or look at it, or click it) to go back to the start screen at any time. Above it hangs an old shop sign marked *Options*: volume, mute, and swapping between the two activities.
 
@@ -53,7 +55,7 @@ A small butterfly made of soft light shows you each gesture instead of explainin
 | In the forest | With your hands | With gaze and pinch (Meta VR Glasses) |
 | --- | --- | --- |
 | Firefly | Boop it to see its colour | Look at it, pinch |
-| Star (stargazing) | Point at it and pinch | Look at it, pinch |
+| Star (stargazing) | Look at it for a moment, or point at it and pinch | Look at it |
 | Mushroom near you | Tap the cap: a deep, soft *boop*, and it slowly changes colour | Look, pinch |
 | Fern | Brush through it for a soft swoosh | Look, pinch |
 | Puffball | Tap it to release a cloud of glowing spores | Look, pinch |
@@ -96,7 +98,7 @@ Best with headphones.
 index.html        start screen and options
 src/main.js       the night: arrival, tucking in, rain, goodnight
 src/fireflies.js  the firefly memory game
-src/stars.js      stargazing: the sleepy stars and the opening canopy
+src/skygames.js   stargazing: the starfield and the two star games
 src/choice.js     choosing tonight's activity
 src/guide.js      the ghost butterfly
 src/touch.js      boops, swooshes, puffs, dandelions

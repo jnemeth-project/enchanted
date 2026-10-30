@@ -8,6 +8,12 @@ import { glowTexture, tweens } from './util.js';
 const FONT = '"Iowan Old Style", "Palatino Linotype", Georgia, serif';
 
 // the floating options panel: rows the player can touch or point at
+// swapping goes round the three games
+const NEXT_GAME = {
+  fireflies: { key: 'count', title: 'Counting stars', sub: 'lie back and enjoy' },
+  count: { key: 'shapes', title: 'Star pictures', sub: 'lie back and enjoy' },
+  shapes: { key: 'fireflies', title: 'Firefly memory', sub: 'find the matching colours' },
+};
 const ROWS = [
   { key: 'vol', h: 1 }, { key: 'mute', h: 1 }, { key: 'swap', h: 1 }, { key: 'close', h: 1 },
 ];
@@ -75,7 +81,8 @@ export class Menu {
       g.font = `30px ${FONT}`; g.fillStyle = 'rgba(210, 222, 255, 0.75)'; g.fillText('Volume', W / 2, y + 128);
     }
     row(1, this.muted ? 'Sound on' : 'Mute', 'mute');
-    row(2, this.mode === 'stars' ? 'Swap to Firefly memory' : 'Swap to Stargazing', 'swap', this.mode === 'stars' ? 'find the matching colours' : 'lie back and enjoy');
+    const nx = NEXT_GAME[this.mode] || NEXT_GAME.fireflies;
+    row(2, 'Swap to ' + nx.title, 'swap', nx.sub);
     row(3, 'Close', 'close');
     this.panelT.needsUpdate = true;
   }
@@ -107,7 +114,7 @@ export class Menu {
     if (key === 'vol-' || key === 'vol+') { this.muted = false; this.volume = Math.max(0, Math.min(1, this.volume + (key === 'vol+' ? 0.125 : -0.125))); }
     if (key === 'mute') this.muted = !this.muted;
     if (key === 'vol-' || key === 'vol+' || key === 'mute') { if (this.onVolume) this.onVolume(this.muted ? 0 : this.volume, this.volume, this.muted); }
-    if (key === 'swap') { this.show(false); if (this.onSwap) this.onSwap(this.mode === 'stars' ? 'fireflies' : 'stars'); return; }
+    if (key === 'swap') { this.show(false); if (this.onSwap) this.onSwap((NEXT_GAME[this.mode] || NEXT_GAME.fireflies).key); return; }
     this._drawPanel();
   }
 
