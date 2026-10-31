@@ -131,6 +131,7 @@ async function init() {
   touch = new Touch(W, sound, effects);
   seed = new Seed(scene, W, state, sound, effects, touch);
   flies = new Fireflies(scene, sleep, sound);
+  flies.model = { body: W.byName.G_FireflyBody, wing: W.byName.G_FireflyWing }; // the little beetles, from Blender
   rain = new Rain(scene, sound, effects, seed);
   menu = new Menu(scene, W, input, sound);
   twirls = new Twirls(W, sound, effects); pebbles = new Pebbles(W, sound, effects); crystals = new Crystals(W, sound, effects);

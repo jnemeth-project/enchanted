@@ -7,6 +7,9 @@ import { glowTexture, rand, clamp } from './util.js';
 
 const HIDDEN = new THREE.Color(1.0, 0.9, 0.62);    // plain firefly glow: pale gold, so every colour stands out from it
 const CORE = new THREE.Color(1.0, 0.98, 0.8);
+// the firefly model's lantern and wing hinge, from Blender's axes (x, y, z) into the game's (x, z, -y)
+const LANTERN = new THREE.Vector3(0, -0.0004, 0.0135), WING_HINGE = new THREE.Vector3(0.0018, 0.0034, -0.004);
+const VIEW = new THREE.Vector3(0, 0.82, 0); // where your eyes are (the fireflies turn a little toward you)
 // six strong colours that are easy to tell apart at night. Each also has its own shape and its own note,
 // so a pair can be matched by colour, by shape or by sound (colour blind players included).
 export const COLOURS = [
@@ -95,15 +98,31 @@ export class Fireflies {
     halo.scale.setScalar(0.1 * k); halo.renderOrder = 4; g.add(halo);
     const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: CORE.clone(), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
     core.scale.setScalar(0.024 * k); core.renderOrder = 4; g.add(core);
-    if (!this.orbGeo) this.orbGeo = new THREE.SphereGeometry(1, 22, 16);
-    const orb = new THREE.Mesh(this.orbGeo, new THREE.ShaderMaterial({ uniforms: { color: { value: HIDDEN.clone() }, light: { value: 0 } }, vertexShader: orbVS, fragmentShader: orbFS, transparent: true }));
-    orb.scale.setScalar(0.021 * k); orb.renderOrder = 5; g.add(orb);
+    // the firefly itself, modelled in Blender: a little beetle with a glowing tail lantern (tinted gold, or its
+    // secret colour) and two clear wings that flutter. The group is placed so the lantern sits right at g's centre.
+    let orb = null, model = null, wings = [], lantern = null;
+    if (this.model && this.model.body) {
+      model = new THREE.Group(); g.add(model);
+      const inner = new THREE.Group(); model.add(inner); inner.position.copy(LANTERN).multiplyScalar(-1);
+      const body = this.model.body.clone(true); body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); body.scale.set(1, 1, 1); body.visible = true; inner.add(body);
+      body.traverse((m) => { m.visible = true; if (m.isMesh && m.material && m.material.name === 'FireflyLantern') { m.material = m.material.clone(); lantern = m.material; } });
+      if (this.model.wing) for (const side of [1, -1]) {
+        const w = this.model.wing.clone(true); w.visible = true; w.traverse((m) => { m.visible = true; });
+        w.position.set(WING_HINGE.x * side, WING_HINGE.y, WING_HINGE.z); w.rotation.set(0, 0, 0); w.scale.set(side, 1, 1); inner.add(w); wings.push({ w, side });
+      }
+      model.scale.setScalar(1.8 * k); model.userData.side = Math.random() < 0.5 ? 1 : -1;
+    } else {
+      if (!this.orbGeo) this.orbGeo = new THREE.SphereGeometry(1, 22, 16);
+      orb = new THREE.Mesh(this.orbGeo, new THREE.ShaderMaterial({ uniforms: { color: { value: HIDDEN.clone() }, light: { value: 0 } }, vertexShader: orbVS, fragmentShader: orbFS, transparent: true }));
+      orb.scale.setScalar(0.021 * k); orb.renderOrder = 5; g.add(orb);
+    }
     const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconTex(COLOURS[ci].shape), transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
     icon.scale.setScalar(0.026 * k); icon.renderOrder = 6; g.add(icon);
+    if (model) icon.position.set(0, 0.045 * k, 0); // the colour's symbol floats just above the firefly when it shows
     g.position.copy(from); g.visible = false; this.scene.add(g);
     const mid = from.clone().lerp(to, 0.5).add(new THREE.Vector3(rand(-0.8, 0.8), rand(0.4, 1.2), rand(-0.5, 0.5)));
     this.list.push({
-      g, body, halo, core, orb, icon, from, mid, to, ci, t: -delay, dur: this.fast ? rand(1.8, 2.4) : clamp(from.distanceTo(to) / 2.4, 3, 6),
+      g, body, halo, core, orb, model, wings, lantern, icon, from, mid, to, ci, t: -delay, dur: this.fast ? rand(1.8, 2.4) : clamp(from.distanceTo(to) / 2.4, 3, 6),
       state: 'fly', light: 0, ph: Math.random() * 10, reveal: 0, hint: 0, outT: 0, held: false, inside: [false, false], r: 0.045 * k,
     });
   }
@@ -146,11 +165,11 @@ export class Fireflies {
         f.outT += dt;
         f.light = Math.max(0, 1 - f.outT / 1.1);
         if (f.outT > 0.6) { f.g.position.y -= dt * 0.1; f.g.position.z -= dt * 0.06; }
-        if (f.outT > 4) { this.scene.remove(f.g); f.halo.material.dispose(); f.core.material.dispose(); f.orb.material.dispose(); f.icon.material.dispose(); this.list.splice(i, 1); continue; }
+        if (f.outT > 4) { this.scene.remove(f.g); f.halo.material.dispose(); f.core.material.dispose(); if (f.orb) f.orb.material.dispose(); if (f.lantern) f.lantern.dispose(); f.icon.material.dispose(); this.list.splice(i, 1); continue; }
       }
       // colour: gold while hidden, its own colour while shown (or hinted)
       const want = f.state === 'shown' || f.state === 'pair' || f.state === 'out' ? 1 : 0;
-      f.reveal += (want - f.reveal) * Math.min(1, dt * (want ? 8 : 2.5));
+      f.reveal += (want - f.reveal) * Math.min(1, dt * (want ? 8 : 7)); // and when hidden again, the colour is gone quickly
       if (f.hint > 0) f.hint = Math.max(0, f.hint - dt);
       const peek = this.peekT > 0 ? Math.min(1, this.peekT / 1.5, (this.peekDur - this.peekT) / 0.8) : 0; // fades in, holds, fades out
       const show = Math.max(f.reveal, peek, f.hint > 0 ? Math.sin(Math.min(1, (1.6 - f.hint) / 1.6) * Math.PI) * 0.85 : 0);
@@ -164,12 +183,28 @@ export class Fireflies {
       f.core.scale.setScalar(0.024 * (this.big ? 1.3 : 1) * (1 + 0.6 * show));
       f.body.visible = f.state === 'out' && f.light < 0.5;
       // the solid glowing ball, and the colour's symbol inside it while it shows
-      f.orb.material.uniforms.color.value.copy(HIDDEN).lerp(COLOURS[f.ci].c, show);
-      f.orb.material.uniforms.light.value = Math.min(1, f.light * (0.9 + 0.1 * breath));
-      f.orb.scale.setScalar(0.021 * (this.big ? 1.3 : 1) * (1 + 0.25 * show));
+      if (f.orb) {
+        f.orb.material.uniforms.color.value.copy(HIDDEN).lerp(COLOURS[f.ci].c, show);
+        f.orb.material.uniforms.light.value = Math.min(1, f.light * (0.9 + 0.1 * breath));
+        f.orb.scale.setScalar(0.021 * (this.big ? 1.3 : 1) * (1 + 0.25 * show));
+      }
+      if (f.model) {
+        // a three-quarter view: turned side-on to you and tipped a little so you see its back and its lantern
+        f.model.visible = f.light > 0.02;
+        f.model.lookAt(VIEW); f.model.rotateY(f.model.userData.side * 1.25); f.model.rotateX(-0.45);
+        f.model.rotateZ(Math.sin(time * 0.9 + f.ph) * 0.12);
+        // wings: a quick buzz while flying, a slow lazy flutter while it hovers
+        const fast = f.state === 'fly' || f.state === 'out';
+        const flap = fast ? 0.55 + 0.5 * Math.sin(time * 38 + f.ph) : 0.35 + 0.22 * Math.sin(time * 9 + f.ph * 3);
+        for (const { w, side } of f.wings) { w.rotation.z = -side * flap; w.rotation.y = side * 0.25; }
+        if (f.lantern) {
+          const lc = HIDDEN.clone().lerp(COLOURS[f.ci].c, show);
+          f.lantern.color.copy(lc); if (f.lantern.emissive) { f.lantern.emissive.copy(lc); f.lantern.emissiveIntensity = 2.6 * Math.max(0.25, L); }
+        }
+      }
       f.icon.material.opacity = Math.min(1, show * 1.2) * f.light;
       f.icon.scale.setScalar(0.026 * (this.big ? 1.3 : 1) * (1 + 0.25 * show));
-      f.halo.material.opacity *= 0.7; // a softer glow around the ball, so the colour of the ball itself leads
+      f.halo.material.opacity *= f.model ? 0.85 : 0.7; // a soft glow around the lantern
     }
     if (this.allDone && !this.doneFired && !this.list.some((f) => f.state === 'pair')) { this.doneFired = true; if (this.onAllDone) this.onAllDone(); }
   }
@@ -203,8 +238,9 @@ export class Fireflies {
   // reveal a firefly's colour; with two shown, keep the pair or let them fade back
   boop(f) {
     if (f.state !== 'wait' || !this.ready) return;
-    // a third touch while two different ones are still showing: tidy them away straight away
-    if (this.shown.length >= 2) this._hideShown();
+    // while two different colours are still showing, nothing else can be revealed: they have to fade back
+    // first (otherwise sweeping a hand across the row would flash every colour)
+    if (this.shown.length >= 2) return;
     f.state = 'shown'; f.held = false; this.shown.push(f);
     this.sound.boop(f.g.position, COLOURS[f.ci].hz);
     if (this.shown.length < 2) return;
@@ -215,7 +251,7 @@ export class Fireflies {
     } else {
       this.misses++;
       if (this.onMiss) this.onMiss(a, b);
-      clearTimeout(this.hideT); this.hideT = setTimeout(() => this._hideShown(), 1700);
+      clearTimeout(this.hideT); this.hideT = setTimeout(() => this._hideShown(), 1300);
     }
   }
 
