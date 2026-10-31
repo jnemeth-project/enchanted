@@ -8,7 +8,7 @@ import { glowTexture, tweens } from './util.js';
 
 const FONT = '"Iowan Old Style", "Palatino Linotype", Georgia, serif';
 const GAMES = [
-  { key: 'fireflies', name: 'Fireflies', line: 'Find the fireflies that match' },
+  { key: 'fireflies', name: 'Fireflies', line: 'Find the pairs. How many fireflies?' },
   { key: 'count', name: 'Counting stars', line: 'Lie back and count the stars' },
   { key: 'shapes', name: 'Star pictures', line: 'Join the stars into a picture' },
   { key: 'sleepy', name: 'Sleepy mushrooms', line: 'Tap them in the order they glow' },
@@ -61,7 +61,9 @@ export class ThingsMenu {
     // three pictures across the top, the line and the button below
     const items = GAMES.map((gm, i) => ({ key: gm.key, x: 28 + i * 244, y: 90, w: 236, h: 300 }));
     const button = { key: 'go', x: CW / 2 - 170, y: 520, w: 340, h: 130 };
-    return { items, button };
+    // fireflies: three buttons instead of Start, one for each size of game (12, 20 or 26 fireflies)
+    const levels = [12, 20, 26].map((n, i) => ({ key: 'go' + n, n, x: CW / 2 - 330 + i * 230, y: 520, w: 200, h: 130 }));
+    return { items, button, levels };
   }
 
   _draw() {
@@ -84,6 +86,14 @@ export class ThingsMenu {
     if (gm) {
       g.font = `52px ${FONT}`; g.fillStyle = 'rgba(245, 235, 220, 0.92)'; g.fillText(gm.line, CW / 2, 450);
       const stop = this.mode === gm.key, hot = this.hot === 'go';
+      if (gm.key === 'fireflies' && !stop) {
+        for (const b of this._rects().levels) {
+          g.fillStyle = this.hot === b.key ? 'rgba(255, 205, 130, 0.45)' : 'rgba(255, 205, 130, 0.25)';
+          g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 60); g.fill(); g.strokeStyle = 'rgba(255, 215, 150, 0.85)'; g.lineWidth = 4; g.stroke();
+          g.font = `64px ${FONT}`; g.fillStyle = '#fff6e6'; g.fillText(String(b.n), b.x + b.w / 2, b.y + b.h / 2 + 2);
+        }
+        this.tex.needsUpdate = true; return;
+      }
       g.fillStyle = hot ? 'rgba(255, 205, 130, 0.45)' : 'rgba(255, 205, 130, 0.25)';
       g.beginPath(); g.roundRect(button.x, button.y, button.w, button.h, 60); g.fill();
       g.strokeStyle = 'rgba(255, 215, 150, 0.85)'; g.lineWidth = 4; g.stroke();
@@ -97,6 +107,7 @@ export class ThingsMenu {
   _at(uv) {
     const x = uv.x * CW, y = (1 - uv.y) * CH, { items, button } = this._rects();
     for (const r of items) if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return r.key;
+    if (this.sel === 'fireflies' && this.mode !== 'fireflies') { for (const b of this._rects().levels) if (x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) return b.key; return null; }
     if (this.sel && x > button.x && x < button.x + button.w && y > button.y && y < button.y + button.h) return 'go';
     return null;
   }
@@ -110,7 +121,7 @@ export class ThingsMenu {
     const c = this.boardC.clone(), e = eye ? eye.clone() : new THREE.Vector3(0, 0.82, 0);
     const toEye = e.clone().sub(c); toEye.y = 0; toEye.normalize();
     const side = new THREE.Vector3(-toEye.z, 0, toEye.x); // toward the front of you
-    const p = c.clone().addScaledVector(toEye, 0.12).addScaledVector(side, side.z < 0 ? 0.16 : -0.16); p.y = Math.max(e.y - 0.02, Math.min(c.y - 0.04, e.y + 0.18));
+    const p = c.clone().addScaledVector(toEye, 0.32).addScaledVector(side, side.z < 0 ? 0.2 : -0.2); p.y = Math.max(e.y - 0.02, Math.min(c.y - 0.04, e.y + 0.18));   // (well clear of the trunk)
     this.card.position.copy(p); this.card.lookAt(e);
     this.card.visible = true; const from = this.k; tweens.add(0.5, (k) => { this.k = from + (1 - from) * k; });
     this.sound.boop(c, 293.66);
@@ -126,6 +137,11 @@ export class ThingsMenu {
 
   _press(key) {
     if (!key) return;
+    if (/^go\d+$/.test(key)) {
+      this.sound.boop(this.card.position, 392);
+      if (this.onStart) this.onStart('fireflies', { count: +key.slice(2) });
+      this.close(); return;
+    }
     if (key === 'go') {
       const k = this.sel; if (!k) return;
       this.sound.boop(this.card.position, 392);
@@ -148,8 +164,8 @@ export class ThingsMenu {
   }
   pick(ray) {
     const c = this._cardHit(ray);
-    if (c && c.key) return c.key === 'go'
-      ? { key: 'things:go:' + this.sel, size: 0.05, dwell: 1.2, confirm: true, gazeNear: true, point: c.point, fire: () => this._press('go') }
+    if (c && c.key) return c.key.startsWith('go')
+      ? { key: 'things:' + c.key + ':' + this.sel, size: 0.05, dwell: 1.2, confirm: true, gazeNear: true, point: c.point, fire: () => this._press('go') }
       : { key: 'things:' + c.key, size: 0.06, dwell: 0.9, gazeNear: true, point: c.point, fire: () => this._press(c.key) };
     if (c) return null;
     const b = !this.open && this._boardHit(ray);

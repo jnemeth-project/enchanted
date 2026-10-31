@@ -1,6 +1,6 @@
 // Little surprises for people who poke at things. None of them ask anything of you or pop up uninvited:
 // each one only answers something you did.
-//  - Boop the butterfly: it does a happy little loop. Keep poking it and it has words for you.
+//  - Boop the butterfly: it does a happy little loop. Poke it a few times quickly and it has had enough.
 //  - Knock three times on the white tree: "Nobody's home... or are they?" Knock again and its lights glow.
 //  - Wave up at the moon: it winks back.
 //  - Sing to the mushrooms (an option on the start screen, uses the microphone): the ones near you glow along.
@@ -36,10 +36,10 @@ export class Eggs {
   }
   _boop() {
     const g = this.guide, now = this.t;
-    this.pokes = this.pokes.filter((x) => now - x < 3.5); this.pokes.push(now);
+    this.pokes = this.pokes.filter((x) => now - x < 5); this.pokes.push(now);
     this.sound.boop(g.pos.clone(), 700 + Math.random() * 120);
     this.effects.sparkle(g.pos.clone(), 0xfff1c8, 6, 0.04);
-    if (this.pokes.length >= 6 && now - this.enoughAt > 25) {
+    if (this.pokes.length >= 3 && now - this.enoughAt > 20) {
       // that is quite enough poking: it flutters off a little way, then comes back when you have settled
       this.enoughAt = now; this.pokes = [];
       this.say("Okay, all right…\nthat's enough 😄", { hold: 3 });
@@ -48,7 +48,6 @@ export class Eggs {
       tweens.add(0.1, () => {}, { delay: 5, done: () => this.resumeGuide && this.resumeGuide() });
       return;
     }
-    if (this.pokes.length === 3 && now - this.awakeAt > 25) { this.awakeAt = now; this.say("Okay, okay,\nI'm awake!", { hold: 2.4 }); }
     if (g.mode !== 'twirl') {
       const mode = g.mode, at = g.target.clone();
       g.twirl(() => { if (mode === 'rest') g.rest(at); else if (mode === 'perch') g.perch(at); else g.goTo(at, { speed: 0.6 }); });

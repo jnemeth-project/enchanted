@@ -113,7 +113,8 @@ export class SleepyMushrooms {
     if (!this.active || this.phase !== 'input') return null;
     let best = null, bd = 9;
     this.list.forEach((mu, k) => { const d = ray.distanceToPoint(mu.cap); if (d < Math.max(0.05, mu.r * 1.2)) { const a = ray.origin.distanceTo(mu.cap); if (a < bd) { bd = a; best = k; } } });
-    return best === null ? null : { key: 'sleepy' + best, size: 0.08, dwell: 0.9, gazeNear: true, point: this.list[best].cap.clone(), fire: () => this.tap(best) };
+    // (hands only: just looking at a mushroom while you remember the tune must never count as a tap)
+    return best === null ? null : { key: 'sleepy' + best, size: 0.08, handsOnly: true, point: this.list[best].cap.clone(), fire: () => this.tap(best) };
   }
 
   update(dt, input, time) {
@@ -121,7 +122,7 @@ export class SleepyMushrooms {
     // playing the tune: one mushroom wakes every 0.8 s
     if (this.active && this.phase === 'wait') {
       this.t += dt;
-      const step = 0.8, n = Math.floor(this.t / step);
+      const step = 1.0, n = Math.floor(this.t / step);
       if (this.t >= 0 && n >= this.i && this.i < this.seq.length) { this._light(this.list[this.seq[this.i]]); this.i++; }
       if (this.i >= this.seq.length && this.t > this.seq.length * step + 0.3) { this.phase = 'input'; this.i = 0; if (this.onFirst && this.rounds === 0 && !this.toldTurn) { this.toldTurn = true; this.onFirst('turn'); } }
     }

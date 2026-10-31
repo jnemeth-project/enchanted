@@ -192,7 +192,7 @@ async function init() {
   // the sleepy mushrooms game: little mushrooms on the ground in front of you that hum a tune to copy
   sleepy = new SleepyMushrooms(scene, W, sound, effects);
   sleepy.onFirst = () => say('Now tap them in the same order', { hold: 3 });
-  input.addPicker((r) => sleepy.pick(r), { ui: true });
+  input.addPicker((r) => sleepy.pick(r), { ui: true, handsOnly: true });
   things = new ThingsMenu(scene, W, sound, effects);
   things.onStart = playGame; things.onStop = stopGame;
   menu.onStop = stopGame; menu.onThings = () => things.show(eyeRay().origin);
@@ -390,8 +390,9 @@ function greet() {
 function restGuide() { if (things && things.boardC) guide.goTo(things.boardC.clone().add(new THREE.Vector3(0.2, 0.14, -0.08)), { orbit: 0.03, speed: 0.5 }); }
 
 // From the menu: start a game (stopping whatever was going on), or stop it and go back to just sitting
-function playGame(mode) {
+function playGame(mode, opts = {}) {
   if (phase.name === 'goodnight') return;
+  if (mode === 'fireflies') phase.flyCount = opts.count || phase.flyCount || 12;
   swapMode(mode);
   things.setMode(mode);
   if (!state.stopHintShown) { state.stopHintShown = true; saveState(state); tweens.add(0.1, () => {}, { delay: 9, done: () => { if (phase.mode === mode) say('To stop, open the menu again', { hold: 3.2 }); } }); }
@@ -454,8 +455,7 @@ function onPairFound() {
 
 // every pair found: the forest is asleep, and the rain comes
 function onAllPairs() {
-  // level up, every board: no limit, as far as you can go within the session
-  state.memoryLevel = (state.memoryLevel || 1) + 1; saveState(state);
+  // a new board of the same size you chose, for as long as you like
   if (phase.name !== 'fireflies' || phase.wrapping) return;
   if (remaining() < 100 && !keepPlaying()) { wrapUpFireflies(true); return; }
   say('Well remembered', { hold: 1.8 });
@@ -465,9 +465,10 @@ function onAllPairs() {
 function memoryPairs(level = state.memoryLevel || 1) { return Math.min(15, 5 + 2 * (level - 1)); }
 function memorizeTime(level = state.memoryLevel || 1) { return level <= 6 ? 10 : Math.max(5, 10 - (level - 6)); }
 function startLevel() {
-  const level = state.memoryLevel || 1, pairs = memoryPairs(level);
-  say(`Level ${level}\n${pairs * 2} fireflies`, { width: 0.9, hold: 2.2 });
-  tweens.add(0.1, () => {}, { delay: 2.6, done: () => { if (phase.name === 'fireflies' && !phase.wrapping) flies.startMemory(pairs, memorizeTime(level)); } });
+  // the size you chose on the menu: 12, 20 or 26 fireflies (with a little longer to remember the bigger ones)
+  const n = phase.flyCount || 12, pairs = n / 2, look = n <= 12 ? 10 : n <= 20 ? 13 : 16;
+  say(`${n} fireflies`, { width: 0.9, hold: 2.2 });
+  tweens.add(0.1, () => {}, { delay: 2.6, done: () => { if (phase.name === 'fireflies' && !phase.wrapping) flies.startMemory(pairs, look); } });
 }
 // the session is nearly over: the fireflies drift home, then the rain (if your mushroom needs it) and goodnight
 function wrapUpFireflies(finished = false) {

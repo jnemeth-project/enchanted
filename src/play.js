@@ -61,6 +61,42 @@ export class Pebbles {
     this.sound = sound; this.effects = effects; this.grounds = W.grounds;
     this.list = W.pebbles.map((o) => ({ o, home: o.position.clone(), homeQ: o.quaternion.clone(), homeS: o.scale.clone(), state: 'rest', v: new THREE.Vector3(), spin: new THREE.Vector3(), t: 0, hand: null, trail: [] }));
     this.ray = new THREE.Raycaster();
+    // a soft glowing trail behind every pebble in flight, so you can follow where it goes (and a glow on the
+    // pebble itself), fading out a second or so after it lands
+    const TN = this.TN = 240; this.tpos = new Float32Array(TN * 3).fill(-999); this.tcol = new Float32Array(TN * 3); this.tage = new Float32Array(TN).fill(9); this.ti = 0;
+    const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(this.tpos, 3)); tg.setAttribute('color', new THREE.BufferAttribute(this.tcol, 3));
+    this.trail = new THREE.Points(tg, new THREE.PointsMaterial({ map: glowTexture(), size: 0.11, sizeAttenuation: true, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.trail.frustumCulled = false; this.trail.renderOrder = 5; if (effects && effects.scene) effects.scene.add(this.trail);
+  }
+
+  _trail(p) { const j = this.ti++ % this.TN; this.tpos[j * 3] = p.x; this.tpos[j * 3 + 1] = p.y; this.tpos[j * 3 + 2] = p.z; this.tage[j] = 0; }
+  _trailUpdate(dt) {
+    let any = false;
+    for (let j = 0; j < this.TN; j++) {
+      if (this.tage[j] > 2) continue; any = true; this.tage[j] += dt;
+      const k = Math.max(0, 1 - this.tage[j] / 2) ** 1.3 * 1.6;
+      this.tcol[j * 3] = 1.0 * k; this.tcol[j * 3 + 1] = 0.92 * k; this.tcol[j * 3 + 2] = 0.7 * k;
+    }
+    if (any) { this.trail.geometry.attributes.position.needsUpdate = true; this.trail.geometry.attributes.color.needsUpdate = true; }
+  }
+
+  // a little help aiming at the pond: a throw roughly toward it is nudged so it lands in the water (a flat,
+  // skimming throw keeps its own speed, so it can still skip)
+  _aim(pb, v) {
+    const P = this.pond; if (!P || !P.ok) return v;
+    const o = pb.o.position, to = P.centre.clone().sub(o); to.y = 0; const dist = to.length(); to.normalize();
+    const hv = new THREE.Vector3(v.x, 0, v.z), hs = hv.length(); if (hs < 1.2) return v;
+    const ang = hv.clone().normalize().angleTo(to); if (ang > THREE.MathUtils.degToRad(28)) return v;
+    const dir = hv.clone().normalize().lerp(to, 0.7).normalize();
+    const flat = v.y < hs * 0.45;
+    let speed = hs;
+    if (!flat) {
+      // where would it land? if it would fall short of the water or fly over it, carry it to somewhere in the pond
+      const h = o.y - P.y, vy = Math.max(0.5, v.y), t = (vy + Math.sqrt(vy * vy + 2 * G * Math.max(0, h))) / G, d = hs * t;
+      const near = dist - P.rx * 0.75, far = dist + P.rx * 0.6;
+      if (d > near * 0.45 && d < far * 1.9) { const want = Math.min(far, Math.max(near, d)); speed = want / t; v.y = vy; }
+    }
+    return new THREE.Vector3(dir.x * speed, v.y, dir.z * speed);
   }
 
   _groundY(p) {
@@ -88,6 +124,7 @@ export class Pebbles {
   }
 
   update(dt, input) {
+    this._trailUpdate(dt);
     // pick up: pinch near a resting pebble, or point at one and pinch: it flies up into your hand
     input.hands.forEach((h, i) => {
       if (!h.present) return;
@@ -114,10 +151,11 @@ export class Pebbles {
           const a = pb.trail[0], b = pb.trail[pb.trail.length - 1], time = pb.trail.slice(1).reduce((s, x) => s + x.dt, 0) || dt;
           const v = b.p.clone().sub(a.p).divideScalar(time).multiplyScalar(3.6); // a good throw really flies
           if (v.length() < 0.6) { pb.state = 'fly'; pb.v.set(0, 0, 0); pb.t = 0; pb.hand = null; } // just dropped
-          else this._throw(pb, v);
+          else this._throw(pb, this._aim(pb, v));
         }
       } else if (pb.state === 'fly') {
         pb.v.y -= G * dt;
+        pb.tt = (pb.tt || 0) + dt; if (pb.tt > 0.012) { pb.tt = 0; this._trail(o.position); }
         o.position.addScaledVector(pb.v, dt);
         if (this.field) this.field.collide(o.position, pb.v, 0.05, pb);
         o.rotation.x += pb.spin.x * dt; o.rotation.y += pb.spin.y * dt; o.rotation.z += pb.spin.z * dt;
@@ -539,7 +577,8 @@ class ShelfThing {
   // how far a hand point is from the thing (override for long things)
   dist(p) { return this.o.position.distanceTo(p); }
   anchor(h) { return this.how === 'grip' ? h.palm : h.pinchPoint; }
-  holding(h) { return this.how === 'grip' ? gripping(h) : h.pinching; }
+  // (either way of holding keeps it: a pinch that loosens into a grip, or the other way round, is still holding)
+  holding(h) { return gripping(h) || h.pinching; }
   grab(input) {
     if (!this.o) return;
     input.hands.forEach((h) => {
@@ -568,7 +607,13 @@ class ShelfThing {
     const o = this.o;
     if (this.held) {
       const h = this.held;
-      if (!h.present || !this.holding(h)) {
+      // a quick hand can lose its pinch, or its tracking, for a split second: only let go once it has really
+      // been released for a moment (a fifth of a second; a little longer if the hand vanished from view)
+      const loose = !h.present || !this.holding(h);
+      this.loose = loose ? (this.loose || 0) + dt : 0;
+      if (loose && this.loose < (h.present ? 0.2 : 0.4)) { if (h.present) { this.swing = Math.max((this.swing || 0) * Math.exp(-dt * 8), h.speed || 0); this.place(h, dt); } return; }
+      if (loose) {
+        this.loose = 0;
         h._holding = null; this.held = null; this.ret = 0; this.wait = 1.2; this.onLetGo && this.onLetGo();
         // let go mid-swing, fast: a throw (the jar, for one, has something to say about that)
         if (h.present && this.swing > 1.5 && this.onThrow) { this.wait = 0.5; this.onThrow(this.o.position.clone()); }
