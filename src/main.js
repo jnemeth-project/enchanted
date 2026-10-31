@@ -92,9 +92,9 @@ function setCalm(on) {
   effects.motion = on ? 0.5 : 1; if (rain) rain.calm = on;
 }
 // re-centre the view; with Calm motion, behind a quick soft fade so nothing jumps
-function gentleRecenter() {
-  if (!renderer.xr.isPresenting) return;
-  if (!options.calm) { recenter(); return; }
+function gentleRecenter(always = false) {
+  if (!renderer.xr.isPresenting || !headTracked()) return;
+  if (!options.calm && !always) { recenter(); return; }
   camera.add(veil); veil.visible = true;
   tweens.add(0.3, (k) => { veil.material.opacity = k; }, { done: () => { recenter(); tweens.add(0.6, (k) => { veil.material.opacity = 1 - k; }, { done: () => { veil.visible = false; camera.remove(veil); } }); } });
 }
@@ -150,7 +150,7 @@ async function init() {
   applyAccess();
   menu.volume = options.volume; menu.muted = !!options.muted;
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
-  menu.onMainMenu = toMainMenu; menu.onSwap = swapMode;
+  menu.onMainMenu = toMainMenu; menu.onSwap = swapMode; menu.onRecenter = () => gentleRecenter(true);
   menu.onVolume = (v, vol, muted) => { sound.setVolume(v); options.volume = vol; options.muted = muted; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
   input.addPicker((r) => choice.pickRay(r), { ui: true }); // the lanterns come first: they float in front of the door
   input.addPicker((r) => menu.pick(r), { ui: true });
@@ -320,6 +320,7 @@ function updatePhases(dt) {
 
 function askChoice() {
   if (phase.name === 'choose') return;
+  gentleRecenter(true);
   phase.name = 'choose'; phase.t = 0;
   guide.goTo(new THREE.Vector3(0, 1.3, -1.3), { orbit: 0.05, speed: 0.8 });
   say('What would you like tonight?\nPoint and pinch, or look at one', { hold: 3.2 });
@@ -338,6 +339,7 @@ function startMode(mode) {
   if (guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
   if (mode === 'fireflies') {
     phase.name = 'fireflies';
+    gentleRecenter(true);
     input.farHands = false;
     // the forest's own glow quiets down so the fireflies stand out clearly in front of you
     sleep.quiet(0.32); touch.dimBoops(1); // the musical mushrooms keep their full colour (the fireflies are solid and bright enough now)
@@ -583,7 +585,8 @@ function step(dt) {
   if (renderer.xr.isPresenting) {
     xrFrames++;
     if (!xrCentred && xrFrames > 3 && headTracked()) { recenter(); xrCentred = performance.now(); }
-    else if (xrCentred > 0 && performance.now() - xrCentred > 2500) { recenter(); xrCentred = -1; }
+    else if (xrCentred > 0 && performance.now() - xrCentred > 2500) { recenter(); xrCentred = -performance.now(); }
+    else if (xrCentred < -1 && performance.now() + xrCentred > 4000) { gentleRecenter(); xrCentred = -1; } // once more when you have settled
   }
   desktop.update();
   input.update(dt);

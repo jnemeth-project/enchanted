@@ -15,7 +15,7 @@ const NEXT_GAME = {
   shapes: { key: 'fireflies', title: 'Firefly memory', sub: 'find the matching colours' },
 };
 const ROWS = [
-  { key: 'vol', h: 1 }, { key: 'mute', h: 1 }, { key: 'swap', h: 1 }, { key: 'edges', h: 1 }, { key: 'close', h: 1 },
+  { key: 'vol', h: 1 }, { key: 'mute', h: 1 }, { key: 'swap', h: 1 }, { key: 'edges', h: 1 }, { key: 'recenter', h: 1 }, { key: 'close', h: 1 },
 ];
 
 export class Menu {
@@ -38,15 +38,15 @@ export class Menu {
   }
 
   _buildPanel() {
-    this.panelC = document.createElement('canvas'); this.panelC.width = 768; this.panelC.height = 920;
+    this.panelC = document.createElement('canvas'); this.panelC.width = 768; this.panelC.height = 1080;
     this.panelT = new THREE.CanvasTexture(this.panelC); this.panelT.colorSpace = THREE.SRGBColorSpace;
-    this.panel = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.551), new THREE.MeshBasicMaterial({ map: this.panelT, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
-    this.panel.renderOrder = 40; this.panel.visible = false; this.panel.scale.setScalar(1.6); this.scene.add(this.panel);
+    this.panel = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.647), new THREE.MeshBasicMaterial({ map: this.panelT, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
+    this.panel.renderOrder = 40; this.panel.visible = false; this.panel.scale.setScalar(1.4); this.scene.add(this.panel);
     this._drawPanel();
   }
 
   _rowAt(uv) { // which row (and which part of the volume row) a point on the panel is
-    const y = (1 - uv.y) * 920;
+    const y = (1 - uv.y) * 1080;
     if (y < 120) return null;
     const i = Math.floor((y - 120) / 160); const row = ROWS[i];
     if (!row) return null;
@@ -55,7 +55,7 @@ export class Menu {
   }
 
   _drawPanel() {
-    const g = this.panelC.getContext('2d'), W = 768, H = 920;
+    const g = this.panelC.getContext('2d'), W = 768, H = 1080;
     g.clearRect(0, 0, W, H);
     g.fillStyle = 'rgba(14, 12, 28, 0.88)'; g.beginPath(); g.roundRect(8, 8, W - 16, H - 16, 40); g.fill();
     g.strokeStyle = 'rgba(190, 220, 255, 0.5)'; g.lineWidth = 3; g.stroke();
@@ -84,7 +84,8 @@ export class Menu {
     const nx = NEXT_GAME[this.mode] || NEXT_GAME.fireflies;
     row(2, 'Swap to ' + nx.title, 'swap', nx.sub);
     row(3, this.softEdges ? 'Calm motion: on' : 'Calm motion: off', 'edges', 'for motion sickness: gentler, softer edges');
-    row(4, 'Close', 'close');
+    row(4, 'Re-centre view', 'recenter', 'sets your seated height again');
+    row(5, 'Close', 'close');
     this.panelT.needsUpdate = true;
   }
 
@@ -112,6 +113,7 @@ export class Menu {
     if (key === 'door') { if (this.onMainMenu) this.onMainMenu(); return; }
     if (key === 'options') { this.show(true); return; }
     if (key === 'close') { this.show(false); return; }
+    if (key === 'recenter') { this.show(false); if (this.onRecenter) this.onRecenter(); return; }
     if (key === 'vol-' || key === 'vol+') { this.muted = false; this.volume = Math.max(0, Math.min(1, this.volume + (key === 'vol+' ? 0.125 : -0.125))); }
     if (key === 'mute') this.muted = !this.muted;
     if (key === 'edges') { this.softEdges = !this.softEdges; if (this.onSoftEdges) this.onSoftEdges(this.softEdges); }
@@ -146,9 +148,9 @@ export class Menu {
     if (this.open) for (const h of input.hands) {
       if (!h.present) continue;
       const local = this.panel.worldToLocal(h.index.clone());
-      const inside = Math.abs(local.x) < 0.23 && Math.abs(local.y) < 0.2755 && Math.abs(local.z) < 0.02;
+      const inside = Math.abs(local.x) < 0.23 && Math.abs(local.y) < 0.3235 && Math.abs(local.z) < 0.02;
       if (inside) {
-        const key = this._rowAt(new THREE.Vector2(local.x / 0.46 + 0.5, local.y / 0.551 + 0.5));
+        const key = this._rowAt(new THREE.Vector2(local.x / 0.46 + 0.5, local.y / 0.647 + 0.5));
         if (key && !h._menuIn) this.press(key);
         h._menuIn = !!key;
       } else h._menuIn = false;
