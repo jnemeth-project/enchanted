@@ -63,7 +63,9 @@ export class ThingsMenu {
     const button = { key: 'go', x: CW / 2 - 170, y: 520, w: 340, h: 130 };
     // fireflies: three buttons instead of Start, one for each size of game (12, 20 or 26 fireflies)
     const levels = [12, 20, 26].map((n, i) => ({ key: 'go' + n, n, x: CW / 2 - 330 + i * 230, y: 520, w: 200, h: 130 }));
-    return { items, button, levels };
+    // a round close button in the top right corner
+    const closeB = { key: 'close', x: CW - 118, y: 14, w: 100, h: 100 };
+    return { items, button, levels, closeB };
   }
 
   _draw() {
@@ -73,6 +75,11 @@ export class ThingsMenu {
     g.strokeStyle = 'rgba(255, 205, 130, 0.55)'; g.lineWidth = 4; g.stroke();
     g.textAlign = 'center'; g.textBaseline = 'middle';
     g.font = `52px ${FONT}`; g.fillStyle = 'rgba(255, 228, 180, 0.95)'; g.fillText('Things to do', CW / 2, 52);
+    { const c = this._rects().closeB, cx = c.x + c.w / 2, cy = c.y + c.h / 2, hot = this.hot === 'close';
+      g.fillStyle = hot ? 'rgba(255, 205, 130, 0.4)' : 'rgba(255, 205, 130, 0.16)'; g.beginPath(); g.arc(cx, cy, 40, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = 'rgba(255, 215, 150, 0.85)'; g.lineWidth = 4; g.stroke();
+      g.lineCap = 'round'; g.lineWidth = 7; g.strokeStyle = '#fff1d6'; g.beginPath();
+      g.moveTo(cx - 15, cy - 15); g.lineTo(cx + 15, cy + 15); g.moveTo(cx + 15, cy - 15); g.lineTo(cx - 15, cy + 15); g.stroke(); }
     for (const r of items) {
       const gm = GAMES.find((x) => x.key === r.key), on = this.sel === r.key, hot = this.hot === r.key, running = this.mode === r.key;
       g.fillStyle = on ? 'rgba(255, 205, 130, 0.22)' : hot ? 'rgba(255, 205, 130, 0.12)' : 'rgba(255, 255, 255, 0.05)';
@@ -105,7 +112,8 @@ export class ThingsMenu {
   }
 
   _at(uv) {
-    const x = uv.x * CW, y = (1 - uv.y) * CH, { items, button } = this._rects();
+    const x = uv.x * CW, y = (1 - uv.y) * CH, { items, button, closeB } = this._rects();
+    if (x > closeB.x - 10 && x < closeB.x + closeB.w + 10 && y > closeB.y - 10 && y < closeB.y + closeB.h + 10) return 'close';
     for (const r of items) if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h) return r.key;
     if (this.sel === 'fireflies' && this.mode !== 'fireflies') { for (const b of this._rects().levels) if (x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) return b.key; return null; }
     if (this.sel && x > button.x && x < button.x + button.w && y > button.y && y < button.y + button.h) return 'go';
@@ -129,7 +137,7 @@ export class ThingsMenu {
     if (this.onOpen) this.onOpen();
   }
   close() {
-    if (!this.open) return; this.open = false; this.hot = null;
+    if (!this.open) return; this.open = false; this.hot = null; this.needLeave = true;
     const from = this.k; tweens.add(0.45, (k) => { this.k = from * (1 - k); }, { done: () => { if (!this.open) this.card.visible = false; } });
   }
 
@@ -137,6 +145,7 @@ export class ThingsMenu {
 
   _press(key) {
     if (!key) return;
+    if (key === 'close') { this.sound.boop(this.card.position, 196); this.close(); return; }
     if (/^go\d+$/.test(key)) {
       this.sound.boop(this.card.position, 392);
       if (this.onStart) this.onStart('fireflies', { count: +key.slice(2) });
@@ -169,8 +178,12 @@ export class ThingsMenu {
       ? { key: 'things:' + c.key + ':' + this.sel, size: 0.05, dwell: 1.2, confirm: true, gazeNear: true, point: c.point, fire: () => this._press('go') }
       : { key: 'things:' + c.key, size: 0.06, dwell: 0.9, gazeNear: true, point: c.point, fire: () => this._press(c.key) };
     if (c) return null;
-    const b = !this.open && this._boardHit(ray);
-    if (b) return { key: 'things:board', size: 0.14, dwell: 1.0, gazeNear: true, point: b, fire: () => this.show(this.eye) };
+    // looking at the little board again (while the card is open) folds the card away
+    // (after it closes, look away from the board once before it can open again, so it never flips back open)
+    const b = this._boardHit(ray);
+    if (!b) this.needLeave = false;
+    if (b && this.needLeave && !this.open) return null;
+    if (b) return { key: 'things:board:' + (this.open ? 'close' : 'open'), size: 0.14, dwell: 1.0, gazeNear: true, point: b, fire: () => (this.open ? this.close() : this.show(this.eye)) };
     return null;
   }
 

@@ -137,13 +137,22 @@ export class SleepyMushrooms {
       if (this.t >= 0 && n >= this.i && this.i < this.seq.length) { this._light(this.list[this.seq[this.i]]); this.i++; }
       if (this.i >= this.seq.length && this.t > this.seq.length * step + 0.3) { this.phase = 'input'; this.i = 0; if (this.onFirst && this.rounds === 0 && !this.toldTurn) { this.toldTurn = true; this.onFirst('turn'); } }
     }
-    // tapping with a fingertip (or a pinch) right on a cap
+    // tapping: any fingertip (or a pinch) coming down onto a cap. Generous on purpose: anywhere over the cap,
+    // from a little above it to a little below its rim, counts, and only the nearest mushroom is tapped
     if (this.active && this.phase === 'input') input.hands.forEach((h, hi) => {
       if (!h.present) { this.list.forEach((mu) => { mu.inside[hi] = false; }); return; }
+      const pts = []; for (let t = 1; t < 5; t++) if (h.tips && h.tips[t]) pts.push(h.tips[t]);
+      if (h.index) pts.push(h.index); if (h.pinching && h.pinchPoint) pts.push(h.pinchPoint);
+      let best = -1, bd = 9;
       this.list.forEach((mu, k) => {
-        let inside = false;
-        for (let t = 1; t < 5 && !inside; t++) if (h.tips[t] && h.tips[t].distanceTo(mu.cap) < Math.max(0.04, mu.r * 0.9)) inside = true;
-        if (!inside && h.pinching && h.pinchPoint.distanceTo(mu.cap) < Math.max(0.045, mu.r)) inside = true;
+        const R = Math.max(0.065, mu.r * 1.4);
+        for (const p of pts) {
+          const dy = p.y - mu.cap.y; if (dy < -0.08 || dy > 0.1) continue;
+          const d = Math.hypot(p.x - mu.cap.x, p.z - mu.cap.z); if (d < R && d < bd) { bd = d; best = k; }
+        }
+      });
+      this.list.forEach((mu, k) => {
+        const inside = k === best;
         if (inside && !mu.inside[hi]) this.tap(k);
         mu.inside[hi] = inside;
       });
