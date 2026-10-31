@@ -142,7 +142,7 @@ async function init() {
   dirt = new DirtDrawing(scene, W, sound, effects);
   mushThrow = new MushroomThrow(touch, W, sound, effects);
   playfield = new Playfield(W, touch, sound, effects); pebbles.field = mushThrow.field = playfield;
-  flutter = new Butterflies(Guide, scene);
+  flutter = { update() {} };   // (no wandering butterflies: the guide is the only butterfly in the forest)
   // the wise tree's shelves: the drawing stick and the fairy light jar
   stick = new DrawStick(W, sound, dirt); stick.air = airTrails = new AirTrails(scene); jar = new FairyJar(W, scene, sound, effects);
   // the pond: pebbles plop in, or skip across if thrown flat and fast
