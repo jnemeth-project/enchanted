@@ -8,7 +8,7 @@ import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
 // bump this whenever the forest is re-exported, so headsets never keep showing an old saved copy
-export const FOREST_VERSION = 'wire1';
+export const FOREST_VERSION = 'giants2';
 export const EYE = new THREE.Vector3(0, 0.82, 0); // sitting right on the forest floor (a real seated-on-the-ground eye height), not on a chair
 export const shaderMats = []; // every material with a `time` uniform
 
@@ -42,6 +42,26 @@ void main(){
   gl_FragColor=vec4(t.rgb*strength*(lit+earthshine), t.a);
   #include <colorspace_fragment>
 }`;
+
+// The far stars: thousands of small soft star sprites on a huge sphere (built in Blender). Their tint comes
+// from the texture atlas, and each one twinkles gently on its own slow cycle.
+const starFS = `
+uniform sampler2D map; uniform vec3 color; uniform float time; uniform float fade; varying float vTw; varying vec2 vUv;
+void main(){
+  vec4 t=texture2D(map,vUv);
+  float s=0.5+0.5*sin(time*(0.6+vTw*1.4)+vTw*40.);
+  s=0.55+0.45*s*s;
+  gl_FragColor=vec4(t.rgb*color*s*fade, 1.);
+  #include <colorspace_fragment>
+}`;
+function starMat(m) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { map: { value: m.emissiveMap || m.map }, color: { value: new THREE.Color(1, 1, 1) }, time: { value: 0 }, fade: { value: 1 } },
+    vertexShader: twinkleVS, fragmentShader: starFS,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+  });
+  mat.name = m.name; shaderMats.push(mat); return mat;
+}
 
 function emissiveColor(m) {
   return m.emissive ? m.emissive.clone().multiplyScalar(m.emissiveIntensity ?? 1) : new THREE.Color(1, 1, 1);
@@ -80,6 +100,7 @@ function toStandard(m) { // drop sheen (too costly on a headset) but keep every 
 function processMaterial(m) {
   const n = m.name || '';
   if (n === 'FairyDust' || n === 'MagicDust') return twinkleMat(m);
+  if (n === 'StarField') return starMat(m);
   if (n === 'LightRibbon') return ribbonMat(m);
   if (n.startsWith('MoonGlow_')) return additive(m, false);
   if (n === 'Dandelion_Pappus') return additive(m);
@@ -88,7 +109,7 @@ function processMaterial(m) {
     s.name = n; return s;
   }
   if (n === 'StarSky') {
-    const s = new THREE.MeshBasicMaterial({ map: m.emissiveMap, color: new THREE.Color(5.5, 5.5, 5.5), side: THREE.DoubleSide, depthWrite: false, fog: false });
+    const s = new THREE.MeshBasicMaterial({ map: m.emissiveMap, color: new THREE.Color(3.2, 3.2, 3.2), side: THREE.DoubleSide, depthWrite: false, fog: false });
     s.name = n; return s;
   }
   if (n === 'Moon') {
@@ -161,6 +182,7 @@ export async function loadWorld(scene, onProgress) {
 
   // Sky and moon: drawn behind everything, moon placed for tonight's phase.
   const sky = get('G_SkyDome'); if (sky) { sky.renderOrder = -10; sky.frustumCulled = false; W.sky = sky; }
+  const field = get('G_StarField'); if (field) { field.traverse((m) => { m.renderOrder = -9; m.frustumCulled = false; }); W.starField = field; }
   W.moon = { disc: get('G_Moon'), inner: get('G_MoonGlow_Inner'), mid: get('G_MoonGlow_Mid'), wide: get('G_MoonGlow_Sky') };
   const ctl = get('G_MoonController');
   W.moonInfo = parseJSON(ctl && ctl.userData.moon, {}) || {};
@@ -242,6 +264,7 @@ export function applyMoonLight(W, p) {
   }
   const fade = (o, k) => o && o.traverse((m) => { if (m.isMesh) { m.material.opacity = k; m.material.transparent = true; } });
   fade(W.moon.inner, L.glow); fade(W.moon.mid, L.glow); fade(W.moon.wide, L.halo);
-  if (W.sky) W.sky.traverse((m) => { if (m.isMesh) m.material.color.setScalar(5.5 * L.stars); });
+  if (W.sky) W.sky.traverse((m) => { if (m.isMesh) m.material.color.setScalar(3.2 * L.stars); });
+  if (W.starField) W.starField.traverse((m) => { if (m.isMesh && m.material.uniforms) m.material.uniforms.color.value.setScalar(L.stars); });
   W.moonLevel = L;
 }

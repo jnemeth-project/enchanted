@@ -183,13 +183,17 @@ export class Sound {
   // stronger the harder it lands.
   thump(pos, strength = 1) {
     if (!this.enabled) return;
-    const k = Math.max(0.25, Math.min(1, strength)), ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
+    // (headset speakers barely play the deep part, so there is a woody mid "tok" on top that carries the sound)
+    const k = Math.max(0.5, Math.min(1, strength)), ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
     const o = ctx.createOscillator(); o.type = 'sine';
-    const f0 = 95 + Math.random() * 20; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.45, t + 0.12);
-    const og = ctx.createGain(); this._env(og, t, 0.004, 0.75 * k, 0.16); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.25);
+    const f0 = 110 + Math.random() * 20; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.5, t + 0.14);
+    const og = ctx.createGain(); this._env(og, t, 0.003, 1.4 * k, 0.2); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.3);
+    const m = ctx.createOscillator(); m.type = 'triangle';
+    const f1 = 230 + Math.random() * 50; m.frequency.setValueAtTime(f1, t); m.frequency.exponentialRampToValueAtTime(f1 * 0.6, t + 0.08);
+    const mg = ctx.createGain(); this._env(mg, t, 0.002, 0.75 * k, 0.09); m.connect(mg); mg.connect(out); m.start(t); m.stop(t + 0.15);
     const n = this._src(this.brown); const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(260, t + 0.1);
-    const g = ctx.createGain(); this._env(g, t, 0.002, 0.5 * k, 0.11);
+    lp.frequency.setValueAtTime(1600, t); lp.frequency.exponentialRampToValueAtTime(300, t + 0.1);
+    const g = ctx.createGain(); this._env(g, t, 0.001, 0.9 * k, 0.12);
     n.connect(lp); lp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.2);
   }
 

@@ -570,43 +570,83 @@ export class ShelfLights {
   update(time) { for (const b of this.list) b.sp.material.opacity = 0.42 + 0.18 * Math.sin(time * 1.6 + b.ph) * Math.sin(time * 0.7 + b.ph * 0.3); }
 }
 
-// Light painting: lines of soft glowing light drawn in the air with the drawing stick's tip. Each line
-// lingers for a while, then slowly fades away, so the air never fills up.
+// Pixie dust: the drawing stick's tip, held up in the air, sprinkles a trail of twinkling coloured dust.
+// Each stroke has its own colour (gold, rose, violet, mint, sky blue) that slowly shifts along the line; the
+// specks shimmer, a few flash into little four-pointed glints, and the dust drifts gently down as it fades.
+function glintTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32); grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.18, 'rgba(255,255,255,0.55)'); grd.addColorStop(0.5, 'rgba(255,255,255,0.08)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+  g.fillStyle = 'rgba(255,255,255,0.9)';
+  for (const [w, h] of [[2.2, 30], [30, 2.2]]) { g.beginPath(); g.ellipse(32, 32, w, h, 0, 0, Math.PI * 2); g.fill(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function dustTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 32; const g = c.getContext('2d');
+  const grd = g.createRadialGradient(16, 16, 0, 16, 16, 16); grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.3, 'rgba(255,255,255,0.6)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 32, 32); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const DUST_COLOURS = [0xffbe3c, 0xff5fa8, 0x9a6bff, 0x34f0b0, 0x4ab8ff].map((c) => new THREE.Color(c));
+
 export class AirTrails {
   constructor(scene) {
-    const N = this.N = 2400;
-    this.pos = new Float32Array(N * 3).fill(-999); this.col = new Float32Array(N * 3); this.age = new Float32Array(N).fill(99); this.hue = new Float32Array(N);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
-    this.pts = new THREE.Points(g, new THREE.PointsMaterial({ map: glowTexture(), size: 0.016, sizeAttenuation: true, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-    this.pts.frustumCulled = false; this.pts.renderOrder = 6; scene.add(this.pts);
-    this.i = 0; this.last = null; this.h = 0; this.c = new THREE.Color(); this.LIFE = 14;
+    this.LIFE = 14;
+    const layer = (N, tex, size) => {
+      const L = { N, i: 0, pos: new Float32Array(N * 3).fill(-999), col: new Float32Array(N * 3), age: new Float32Array(N).fill(99),
+        base: new Float32Array(N * 3), tw: new Float32Array(N), fall: new Float32Array(N) };
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(L.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(L.col, 3));
+      L.pts = new THREE.Points(g, new THREE.PointsMaterial({ map: tex, size, sizeAttenuation: true, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      L.pts.frustumCulled = false; L.pts.renderOrder = 6; scene.add(L.pts); return L;
+    };
+    this.dust = layer(3000, dustTexture(), 0.0075);   // fine specks
+    this.glow = layer(900, dustTexture(), 0.022);     // a soft coloured haze along the line
+    this.glint = layer(300, glintTexture(), 0.03);    // the odd twinkling star
+    this.last = null; this.stroke = 0; this.along = 0; this.c = new THREE.Color(); this.t = 0;
   }
-  // add light along the path from the last point to p (a dot every few millimetres, so the line is smooth)
-  draw(p, dt) {
+  _colour() {
+    // this stroke's colour, drifting slowly towards the next one in the palette along the line
+    const n = DUST_COLOURS.length, f = this.stroke + this.along * 1.6, a = Math.floor(f) % n, b = (a + 1) % n;
+    return this.c.copy(DUST_COLOURS[a]).lerp(DUST_COLOURS[b], f - Math.floor(f));
+  }
+  _add(L, q, col, jit, k) {
+    const j = L.i++ % L.N;
+    L.pos[j * 3] = q.x + (Math.random() - 0.5) * jit; L.pos[j * 3 + 1] = q.y + (Math.random() - 0.5) * jit; L.pos[j * 3 + 2] = q.z + (Math.random() - 0.5) * jit;
+    L.base[j * 3] = col.r * k; L.base[j * 3 + 1] = col.g * k; L.base[j * 3 + 2] = col.b * k;
+    L.age[j] = 0; L.tw[j] = Math.random() * 20; L.fall[j] = 0.004 + Math.random() * 0.01;
+  }
+  draw(p) {
     if (!this.last) { this.last = p.clone(); return; }
-    const d = p.distanceTo(this.last); if (d < 0.003) return;
-    const n = Math.min(40, Math.ceil(d / 0.0035));
+    const d = p.distanceTo(this.last); if (d < 0.004) return;
+    const n = Math.min(30, Math.ceil(d / 0.005));
     for (let k = 1; k <= n; k++) {
-      const q = this.last.clone().lerp(p, k / n), j = this.i++ % this.N;
-      this.pos[j * 3] = q.x; this.pos[j * 3 + 1] = q.y; this.pos[j * 3 + 2] = q.z; this.age[j] = 0; this.hue[j] = this.h;
+      const q = this.last.clone().lerp(p, k / n); this.along += d / n; const col = this._colour();
+      this._add(this.dust, q, col, 0.012, 0.9); this._add(this.dust, q, col, 0.02, 0.6);
+      if (k % 2 === 0) this._add(this.glow, q, col, 0.004, 0.16);
+      if (Math.random() < 0.05) this._add(this.glint, q, this.c.copy(col).lerp(new THREE.Color(1, 1, 1), 0.35), 0.016, 1);
     }
-    this.h = (this.h + d * 0.6) % 1; this.last.copy(p);
-    this.pts.geometry.attributes.position.needsUpdate = true;
+    this.last.copy(p);
   }
-  lift() { this.last = null; }
+  lift() { if (this.last) { this.stroke = (this.stroke + 1) % DUST_COLOURS.length; this.along = 0; } this.last = null; }
   update(dt) {
-    let any = false;
-    for (let j = 0; j < this.N; j++) {
-      if (this.age[j] > this.LIFE) continue;
-      any = true; this.age[j] += dt;
-      const fade = this.age[j] < this.LIFE - 3 ? 1 : Math.max(0, (this.LIFE - this.age[j]) / 3);
-      // warm gold drifting through soft mint and pink, like the forest's own glow
-      this.c.setHSL(0.11 + 0.3 * (0.5 + 0.5 * Math.sin(this.hue[j] * Math.PI * 2)), 0.75, 0.62).multiplyScalar(fade * (0.85 + 0.15 * Math.sin(this.age[j] * 3 + j)));
-      this.col[j * 3] = this.c.r; this.col[j * 3 + 1] = this.c.g; this.col[j * 3 + 2] = this.c.b;
-      if (this.age[j] > this.LIFE) { this.pos[j * 3 + 1] = -999; this.pts.geometry.attributes.position.needsUpdate = true; }
+    this.t += dt;
+    for (const [L, sparkle] of [[this.dust, 0.45], [this.glow, 0.1], [this.glint, 1]]) {
+      let any = false, moved = false;
+      for (let j = 0; j < L.N; j++) {
+        if (L.age[j] > this.LIFE) continue;
+        any = true; L.age[j] += dt;
+        const a = L.age[j], fade = Math.min(1, a * 6) * (a < this.LIFE - 4 ? 1 : Math.max(0, (this.LIFE - a) / 4));
+        // a shimmer: each speck pulses on its own beat (glints flash brightly now and then)
+        let tw = 0.5 + 0.5 * Math.sin(this.t * (3 + (j % 5)) + L.tw[j]);
+        tw = sparkle === 1 ? Math.pow(tw, 6) : 1 - sparkle + sparkle * tw;
+        const k = fade * tw;
+        L.col[j * 3] = L.base[j * 3] * k; L.col[j * 3 + 1] = L.base[j * 3 + 1] * k; L.col[j * 3 + 2] = L.base[j * 3 + 2] * k;
+        if (a > 2) { L.pos[j * 3 + 1] -= L.fall[j] * dt; moved = true; }   // drifting gently down as it settles
+        if (a > this.LIFE) { L.pos[j * 3 + 1] = -999; moved = true; }
+      }
+      if (any) L.pts.geometry.attributes.color.needsUpdate = true;
+      if (any || moved) L.pts.geometry.attributes.position.needsUpdate = true;
     }
-    if (any) this.pts.geometry.attributes.color.needsUpdate = true;
   }
 }
 
@@ -647,7 +687,7 @@ export class DrawStick extends ShelfThing {
     // in the air (tip well above the ground), the stick paints glowing light; touching the dirt, it scratches a groove
     if (this.air) {
       const t = this.held ? this.tip() : null;
-      if (t && t.y > (this.ground ? this.ground(t) : 0) + 0.07) this.air.draw(t.clone(), dt); else this.air.lift();
+      if (t && t.y > (this.ground ? this.ground(t) : 0) + 0.07) this.air.draw(t.clone()); else this.air.lift();
     }
   }
 }
