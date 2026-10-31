@@ -29,7 +29,6 @@ const OPT_KEY = 'lightsout.options';
 const options = (() => { try { return { look: false, sit: false, bright: false, volume: 0.8, ...JSON.parse(localStorage.getItem(OPT_KEY) || '{}') }; } catch { return { look: false, sit: false, bright: false, volume: 0.8 }; } })();
 if (params.get('mode') === 'sit') options.sit = true;
 if (params.has('look')) options.look = true;
-if (options.calm === undefined && options.soft) options.calm = true; // the old Soft edges setting carries over
 let JUST_SIT = options.sit;
 
 const ui = {
@@ -59,12 +58,12 @@ const vignette = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderM
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
   fragmentShader: 'uniform float strength; varying vec2 vUv; void main(){ float r = length(vUv * 2. - 1.); float a = smoothstep(0.17, 0.42, r); gl_FragColor = vec4(0.0, 0.0, 0.01, a * strength); }',
 }));
-vignette.position.set(0, 0, -0.2); vignette.renderOrder = 999; vignette.frustumCulled = false; vignette.visible = false; camera.add(vignette);
+vignette.position.set(0, 0, -0.2); vignette.renderOrder = 999; vignette.frustumCulled = false; // only added to the view while Calm motion is on
 // a black veil that fades in and out around a re-centre, so the world never jumps (Calm motion)
 const veil = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false }));
-veil.position.set(0, 0, -0.15); veil.renderOrder = 1000; veil.visible = false; camera.add(veil);
+veil.position.set(0, 0, -0.15); veil.renderOrder = 1000; // only in the view for the moment it fades
 let MOTION = 1; // how lively the twirling and drifting is (Calm motion slows it)
-function setSoftEdges(on) { vignette.visible = on; vignette.material.uniforms.strength.value = on ? 0.92 : 0; renderer.xr.setFoveation(on ? 1 : 0); }
+function setSoftEdges(on) { if (on) camera.add(vignette); else camera.remove(vignette); vignette.visible = on; vignette.material.uniforms.strength.value = on ? 0.92 : 0; renderer.xr.setFoveation(on ? 1 : 0); }
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
 const sound = new Sound();
@@ -96,8 +95,8 @@ function setCalm(on) {
 function gentleRecenter() {
   if (!renderer.xr.isPresenting) return;
   if (!options.calm) { recenter(); return; }
-  veil.visible = true;
-  tweens.add(0.3, (k) => { veil.material.opacity = k; }, { done: () => { recenter(); tweens.add(0.6, (k) => { veil.material.opacity = 1 - k; }, { done: () => { veil.visible = false; } }); } });
+  camera.add(veil); veil.visible = true;
+  tweens.add(0.3, (k) => { veil.material.opacity = k; }, { done: () => { recenter(); tweens.add(0.6, (k) => { veil.material.opacity = 1 - k; }, { done: () => { veil.visible = false; camera.remove(veil); } }); } });
 }
 // Read aloud: the words that appear are also spoken, softly and slowly
 function speak(text) {
@@ -202,18 +201,18 @@ function begin() {
 
 function readOptions() {
   const q = (id) => document.getElementById(id);
-  if (q('opt-look')) { options.look = q('opt-look').checked; options.sit = q('opt-sit').checked; options.bright = q('opt-bright').checked; options.calm = !!(q('opt-calm') && q('opt-calm').checked);
+  if (q('opt-sit')) { options.sit = q('opt-sit').checked; options.bright = q('opt-bright').checked; options.calm = !!(q('opt-calm') && q('opt-calm').checked);
     for (const k of ['large', 'speak', 'guides', 'outlines']) options[k] = !!(q('opt-' + k) && q('opt-' + k).checked); options.volume = +q('opt-volume').value; }
   const sel = document.querySelector('#session button.on'); if (sel) options.session = +sel.dataset.min;
   try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {}
   JUST_SIT = options.sit;
   if (JUST_SIT) TUTORIAL = false;
-  gaze.enabled = options.look;
+  gaze.enabled = true; // looking always works (the door and the options need a long, deliberate look)
   setCalm(!!options.calm); applyAccess();
   if (flies) flies.big = options.bright;
   if (touch) touch.highlight = options.bright ? 0.35 : 0;
 }
-for (const [id, key] of [['opt-look', 'look'], ['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-calm', 'calm'], ['opt-large', 'large'], ['opt-speak', 'speak'], ['opt-guides', 'guides'], ['opt-outlines', 'outlines']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
+for (const [id, key] of [['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-calm', 'calm'], ['opt-large', 'large'], ['opt-speak', 'speak'], ['opt-guides', 'guides'], ['opt-outlines', 'outlines']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
 { const v = document.getElementById('opt-volume'); if (v) v.value = options.volume; }
 // how long tonight's session lasts: 5, 10, 15 or 20 minutes (remembered)
 for (const b of document.querySelectorAll('#session button')) {

@@ -27,6 +27,19 @@ export class Gaze {
     this.dot = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ color: 0xdfe8ff, transparent: true, opacity: 0.35, depthTest: false, depthWrite: false }));
     this.dot.renderOrder = 21; scene.add(this.dot);
     this.key = null; this.t = 0; this.cool = 0; this.fade = 0;
+    // the confirm step: a second, smaller ring with a tick, just beside the thing you chose
+    this.ring2 = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({
+      uniforms: { progress: { value: 0 }, opacity: { value: 0 } }, vertexShader: ringVS, fragmentShader: ringFS,
+      transparent: true, depthTest: false, depthWrite: false,
+    }));
+    this.ring2.renderOrder = 22; this.ring2.visible = false; scene.add(this.ring2);
+    const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+    g.strokeStyle = '#fff3cf'; g.lineWidth = 14; g.lineCap = 'round'; g.lineJoin = 'round'; g.shadowColor = 'rgba(255,220,150,0.9)'; g.shadowBlur = 14;
+    g.beginPath(); g.moveTo(36, 66); g.lineTo(56, 86); g.lineTo(94, 44); g.stroke();
+    const tt = new THREE.CanvasTexture(c); tt.colorSpace = THREE.SRGBColorSpace;
+    this.tick = new THREE.Sprite(new THREE.SpriteMaterial({ map: tt, transparent: true, depthTest: false, depthWrite: false }));
+    this.tick.renderOrder = 23; this.tick.visible = false; scene.add(this.tick);
+    this.confirm = null;
   }
 
   update(dt) {
@@ -40,6 +53,21 @@ export class Gaze {
     // a small soft dot shows where you are looking
     this.dot.position.copy(o).addScaledVector(dir, 1.2); this.dot.quaternion.copy(q); this.dot.scale.setScalar(0.004);
     this.cool = Math.max(0, this.cool - dt);
+    // waiting for a confirm: look at the little tick beside it until its ring fills too
+    if (this.confirm) {
+      const k = this.confirm;
+      k.life -= dt;
+      const on = ray.distanceToPoint(k.at) < k.r;
+      k.t = on ? k.t + dt : Math.max(0, k.t - dt * 1.5);
+      const u2 = this.ring2.material.uniforms; u2.progress.value = Math.min(1, k.t / 1.1); u2.opacity.value = Math.min(1, (k.life > 0 ? 1 : 0) + 0.0);
+      this.ring2.position.copy(k.at); this.ring2.quaternion.copy(q); this.ring2.scale.setScalar(k.r * 2.4);
+      this.tick.position.copy(k.at); this.tick.scale.setScalar(k.r * 1.5); this.tick.material.opacity = 0.75 + 0.25 * Math.sin(performance.now() / 180);
+      this.ring2.visible = this.tick.visible = true;
+      this.ring.material.uniforms.opacity.value = 0.6; this.ring.material.uniforms.progress.value = 1;
+      if (k.t >= 1.1) { const c0 = k.c; this._endConfirm(); this.cool = 0.9; c0.fire(); return; }
+      if (k.life <= 0 && !on) { this._endConfirm(); this.cool = 0.4; }
+      return;
+    }
     let c = this.cool > 0 ? null : this.input.pick(ray);
     // things within arm's reach are for your hands: looking only chooses things further away
     // (except what is meant to be used by looking, like the fireflies in their game or the options panel)
@@ -54,6 +82,16 @@ export class Gaze {
       const d = c.point.distanceTo(o);
       this.ring.position.copy(c.point); this.ring.quaternion.copy(q); this.ring.scale.setScalar(Math.max(d * 0.07, (c.size || 0.06) * 1.9));
     }
-    if (c && this.t >= need) { c.fire(); this.t = 0; this.cool = 0.9; this.key = null; }
+    if (c && this.t >= need) {
+      this.t = 0; this.key = null;
+      if (c.confirm) {
+        // the second step: a tick appears just to the right of what you chose
+        const d = c.point.distanceTo(o), right = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+        const r = Math.max(0.035, d * 0.045);
+        this.confirm = { c, at: c.point.clone().addScaledVector(right, Math.max((c.size || 0.06) * 0.9, d * 0.13) + r), r, t: 0, life: 4 };
+      } else { c.fire(); this.cool = 0.9; }
+    }
   }
+
+  _endConfirm() { this.confirm = null; this.ring2.visible = this.tick.visible = false; this.ring2.material.uniforms.progress.value = 0; }
 }

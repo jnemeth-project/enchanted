@@ -98,12 +98,12 @@ export class Menu {
     if (this.open) {
       const h = this._hitObj(ray, this.panel); if (!h) return null;
       const key = this._rowAt(h.uv); if (!key) return null;
-      return { key: 'panel:' + key, size: 0.06, dwell: 2.2, gazeNear: true, point: h.point, fire: () => this.press(key) };
+      return { key: 'panel:' + key, size: 0.06, dwell: 1.3, confirm: true, gazeNear: true, point: h.point, fire: () => this.press(key) };
     }
     const d = this.door && this._hitObj(ray, this.door);
-    if (d) return { key: 'door', size: 0.9, dwell: 3.2, point: d.point, fire: () => this.press('door') };
+    if (d) return { key: 'door', size: 0.9, dwell: 2.0, confirm: true, point: d.point, fire: () => this.press('door') };
     const s = this.sign && this._hitObj(ray, this.sign);
-    if (s) return { key: 'sign', size: 0.5, dwell: 2.6, point: s.point, fire: () => this.press('options') };
+    if (s) return { key: 'sign', size: 0.5, dwell: 1.6, confirm: true, point: s.point, fire: () => this.press('options') };
     return null;
   }
 

@@ -112,7 +112,7 @@ export class Pebbles {
           h._holding = null; pb.fetch = undefined;
           // let go: it flies off with your hand's speed (a little extra, for fun)
           const a = pb.trail[0], b = pb.trail[pb.trail.length - 1], time = pb.trail.slice(1).reduce((s, x) => s + x.dt, 0) || dt;
-          const v = b.p.clone().sub(a.p).divideScalar(time).multiplyScalar(1.35);
+          const v = b.p.clone().sub(a.p).divideScalar(time).multiplyScalar(2.6); // a good throw really flies
           if (v.length() < 0.6) { pb.state = 'fly'; pb.v.set(0, 0, 0); pb.t = 0; pb.hand = null; } // just dropped
           else this._throw(pb, v);
         }
@@ -130,7 +130,7 @@ export class Pebbles {
             pb.v.y = impact * 0.32; pb.v.x *= 0.55; pb.v.z *= 0.55; pb.spin.multiplyScalar(0.5);
           } else { pb.state = 'land'; pb.t = 0; pb.v.set(0, 0, 0); }
         }
-        if (pb.t > 10 || o.position.length() > 40) { pb.state = 'land'; pb.t = 0; }
+        if (pb.t > 12 || o.position.length() > 70) { pb.state = 'land'; pb.t = 0; }
       } else if (pb.state === 'land') {
         // after a moment, it sparkles away and reappears back where it was
         if (pb.t > 3.5) { if (this.effects) this.effects.sparkle(o.position.clone(), 0xd9f6ff, 16, 0.1); pb.state = 'home'; pb.t = 0; }
@@ -354,7 +354,7 @@ export class MushroomThrow {
         if (!h.pinching) {
           h._holding = null;
           const a = m.trail[0], b = m.trail[m.trail.length - 1], time = m.trail.slice(1).reduce((s, x) => s + x.dt, 0) || dt;
-          m.v.copy(b.p).sub(a.p).divideScalar(time).multiplyScalar(1.3);
+          m.v.copy(b.p).sub(a.p).divideScalar(time).multiplyScalar(2.2);
           m.spin.set(Math.random() * 8 - 4, Math.random() * 8 - 4, Math.random() * 8 - 4);
           m.state = 'fly'; m.t = 0; if (m.v.length() > 0.6) this.sound.whoosh(o.position.clone());
         }
