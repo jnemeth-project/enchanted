@@ -20,6 +20,7 @@ import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Out
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { ThingsMenu } from './thingsmenu.js';
+import { SleepyMushrooms } from './sleepy.js';
 import { tweens, clamp, glowTexture } from './util.js';
 import { loadState, beginNight, saveState, wateredTonight, nightKey } from './save.js';
 
@@ -86,7 +87,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
   options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
@@ -158,6 +159,10 @@ async function init() {
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
   menu.onMainMenu = toMainMenu; menu.onSwap = swapMode; menu.onRecenter = () => gentleRecenter(true);
   // the menu of things to do, on the top shelf of the white tree: the only place games are offered
+  // the sleepy mushrooms game: little mushrooms on the ground in front of you that hum a tune to copy
+  sleepy = new SleepyMushrooms(scene, W, sound, effects);
+  sleepy.onFirst = () => say('Now tap them in the same order', { hold: 3 });
+  input.addPicker((r) => sleepy.pick(r), { ui: true });
   things = new ThingsMenu(scene, W, sound, effects);
   things.onStart = playGame; things.onStop = stopGame;
   menu.onStop = stopGame; menu.onThings = () => things.show(eyeRay().origin);
@@ -319,6 +324,12 @@ function updatePhases(dt) {
       if (done) goodnight();
       if (needsWater() && phase.rainShown && guide.mode === 'perch' && phase.rainT - (phase.demoEnd ?? 0) > 25) { phase.rainShown = false; }
     }
+  } else if (P === 'sleepy') {
+    // near the end: the little mushrooms go back to sleep, then the rain if your mushroom needs it
+    if (remaining() < 80 && !phase.wrapping) {
+      phase.wrapping = true; sleepy.stop(); say('The little mushrooms are asleep', { hold: 2.6 });
+      tweens.add(0.1, () => {}, { delay: 3, done: () => { if (phase.name !== 'goodnight') { if (needsWater() && remaining() > 40) startRain(); else goodnight(); } } });
+    }
   } else if (P === 'sky') {
     if (JUST_SIT && phase.t > 8 && phase.t - (phase.autoStar ?? 0) > 5) { phase.autoStar = phase.t; sky.autoStep(); }
     // near the end: if your mushroom still needs water, the sky closes and the rain comes
@@ -354,6 +365,7 @@ function playGame(mode) {
 function stopGame() {
   const m = phase.mode; if (!m || phase.name === 'goodnight') return;
   if (m === 'fireflies') { flies.dismiss(); sleep.quiet(1); touch.dimBoops(1); }
+  if (m === 'sleepy') sleepy.stop();
   if (SKY(m)) { sky.stop(); const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); tweens.add(0.1, () => {}, { delay: 4, done: () => gentleRecenter() }); }
   phase.mode = null; menu.mode = null; things.setMode(null); input.farHands = false;
   phase.name = 'relax'; phase.t = 0; phase.wrapping = false;
@@ -366,6 +378,14 @@ function startMode(mode) {
   phase.mode = mode; phase.t = 0; phase.lastOutAt = 0; phase.shownOnce = false; phase.showing = false; phase.saidFlies = false; phase.wrapping = false;
   menu.mode = mode; if (things) things.setMode(mode);
   if (guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
+  if (mode === 'sleepy') {
+    phase.name = 'sleepy'; input.farHands = false;
+    state.tutorialDone = true; saveState(state);
+    sleepy.start();
+    say('Watch which ones wake up', { hold: 2.6 });
+    guide.goTo(new THREE.Vector3(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 });
+    return;
+  }
   if (mode === 'fireflies') {
     phase.name = 'fireflies';
     input.farHands = false;
@@ -438,6 +458,7 @@ function swapMode(mode) {
   if (choice.active) choice.hide();
   if (phase.mode === 'fireflies') { phase.wrapping = true; flies.dismiss(); sleep.quiet(1); touch.dimBoops(1); }
   if (phase.name === 'rain') rain.stop();
+  if (phase.mode === 'sleepy') sleepy.stop();
   if (SKY(phase.mode) && !SKY(mode)) { sky.stop(); const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); }
   startMode(mode);
 }
@@ -481,6 +502,7 @@ function onGrow(stage) {
 
 function goodnight() {
   if (phase.name === 'goodnight') return;
+  if (sleepy && sleepy.running) sleepy.stop();
   phase.name = 'goodnight'; phase.t = 0;
   flies.dismiss(); sleep.order.forEach((gi, i) => tweens.add(0.1, () => {}, { delay: i * 0.6, done: () => sleep.putToSleep(gi) }));
   tweens.add(1, () => {}, { delay: 6, done: () => rain.stop() });
@@ -586,7 +608,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things });
+  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -625,6 +647,7 @@ function step(dt) {
 
     menu.update(dt, input);
     things.update(dt, input, time, eyeRay());
+    sleepy.update(dt, input, time); dirt.enabled = !sleepy.running;
     if (phase.name !== 'goodnight') session.t += dt;
     sky.ownDwell = !gaze.enabled;
     sky.update(dt, time, input, renderer.xr.isPresenting ? 1.8 : renderer.domElement.height / 900);

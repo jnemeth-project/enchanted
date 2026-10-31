@@ -276,6 +276,7 @@ export class DirtDrawing {
   }
 
   update(dt, input) {
+    if (this.enabled === false) return; // (not while the sleepy mushrooms stand on the dirt)
     this.scratchT = Math.max(0, this.scratchT - dt);
     const dot = null;
     // (no drawing by pointing from a distance: pinching to pick something up must never scribble in the dirt)

@@ -11,6 +11,7 @@ const GAMES = [
   { key: 'fireflies', name: 'Fireflies', line: 'Find the fireflies that match' },
   { key: 'count', name: 'Counting stars', line: 'Lie back and count the stars' },
   { key: 'shapes', name: 'Star pictures', line: 'Join the stars into a picture' },
+  { key: 'sleepy', name: 'Sleepy mushrooms', line: 'Tap them in the order they glow' },
 ];
 const CW = 1024, CH = 720, PW = 0.3, PH = PW * CH / CW;
 
@@ -22,6 +23,12 @@ function icon(g, k, x, y, s, col) {
     g.globalAlpha = 0.7; g.beginPath(); g.ellipse(-s * 0.26, -s * 0.12, s * 0.22, s * 0.1, -0.5, 0, Math.PI * 2); g.ellipse(s * 0.26, -s * 0.12, s * 0.22, s * 0.1, 0.5, 0, Math.PI * 2); g.fill();
   } else if (k === 'count') {
     g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? s * 0.16 : s * 0.38, a = i * Math.PI / 5; g.lineTo(Math.sin(a) * r, -Math.cos(a) * r); } g.closePath(); g.fill();
+  } else if (k === 'sleepy') {
+    // a little mushroom with closed sleepy eyes
+    g.beginPath(); g.ellipse(0, -s * 0.08, s * 0.4, s * 0.24, 0, Math.PI, 0); g.closePath(); g.fill();
+    g.fillRect(-s * 0.1, -s * 0.08, s * 0.2, s * 0.38);
+    g.strokeStyle = 'rgba(40, 24, 10, 0.9)'; g.lineWidth = s * 0.035; g.shadowBlur = 0;
+    for (const sx of [-1, 1]) { g.beginPath(); g.arc(sx * s * 0.045, s * 0.1, s * 0.03, 0.2, Math.PI - 0.2); g.stroke(); }
   } else {
     const p = [[-0.36, 0.22], [-0.12, -0.2], [0.14, 0.08], [0.36, -0.28]];
     g.beginPath(); p.forEach(([a, b], i) => (i ? g.lineTo(a * s, b * s) : g.moveTo(a * s, b * s))); g.stroke();
@@ -52,7 +59,7 @@ export class ThingsMenu {
   // ---------------------------------------------------------------- the card
   _rects() {
     // three pictures across the top, the line and the button below
-    const items = GAMES.map((gm, i) => ({ key: gm.key, x: 40 + i * 320, y: 90, w: 304, h: 300 }));
+    const items = GAMES.map((gm, i) => ({ key: gm.key, x: 28 + i * 244, y: 90, w: 236, h: 300 }));
     const button = { key: 'go', x: CW / 2 - 170, y: 520, w: 340, h: 130 };
     return { items, button };
   }
@@ -69,9 +76,9 @@ export class ThingsMenu {
       g.fillStyle = on ? 'rgba(255, 205, 130, 0.22)' : hot ? 'rgba(255, 205, 130, 0.12)' : 'rgba(255, 255, 255, 0.05)';
       g.beginPath(); g.roundRect(r.x, r.y, r.w, r.h, 30); g.fill();
       if (on) { g.strokeStyle = 'rgba(255, 215, 150, 0.8)'; g.lineWidth = 4; g.stroke(); }
-      icon(g, r.key, r.x + r.w / 2, r.y + 120, 150, running ? '#fff1c8' : '#ffd38a');
-      g.font = `42px ${FONT}`; g.fillStyle = "#fbefd8"; g.fillText(gm.name, r.x + r.w / 2, r.y + 250);
-      if (running) { g.font = `30px ${FONT}`; g.fillStyle = 'rgba(255, 220, 160, 0.85)'; g.fillText('playing now', r.x + r.w / 2, r.y + 286); }
+      icon(g, r.key, r.x + r.w / 2, r.y + 112, 130, running ? '#fff1c8' : '#ffd38a');
+      g.font = `36px ${FONT}`; g.fillStyle = "#fbefd8"; const nm = gm.name.split(" "); if (nm.length > 1 && g.measureText(gm.name).width > r.w - 16) { g.fillText(nm[0], r.x + r.w / 2, r.y + 232); g.fillText(nm.slice(1).join(" "), r.x + r.w / 2, r.y + 270); } else g.fillText(gm.name, r.x + r.w / 2, r.y + 250);
+      if (running) { g.font = `30px ${FONT}`; g.fillStyle = 'rgba(255, 220, 160, 0.85)'; g.fillText('playing now', r.x + r.w / 2, r.y + 26); }
     }
     const gm = GAMES.find((x) => x.key === this.sel);
     if (gm) {
