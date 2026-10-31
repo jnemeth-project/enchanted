@@ -141,7 +141,13 @@ async function init() {
   playfield = new Playfield(W, touch, sound, effects); pebbles.field = mushThrow.field = playfield;
   flutter = new Butterflies(Guide, scene);
   // the wise tree's shelves: the drawing stick and the fairy light jar
-  stick = new DrawStick(W, sound, dirt); stick.air = airTrails = new AirTrails(scene); jar = new FairyJar(W, scene, sound, effects); shelfLights = new ShelfLights(W, scene);
+  stick = new DrawStick(W, sound, dirt); stick.air = airTrails = new AirTrails(scene); jar = new FairyJar(W, scene, sound, effects);
+  // a little surprise for anyone who tries to throw the jar away
+  jar.onThrow = (at) => {
+    if (time - (jar.toldAt ?? -99) < 20) return; jar.toldAt = time;
+    effects.sparkle(at, 0xffe2b0, 14, 0.08);
+    say('No littering\nin the enchanted forest 🙂', { hold: 3.2 });
+  }; shelfLights = new ShelfLights(W, scene);
   // the magic mushroom pot only appears when the rain comes (it has nothing to do before then)
   potGroup = new THREE.Group(); scene.add(potGroup);
   for (const o of [W.magic.stump, W.byName.G_Shadow_SeedStump, W.magic.dust, ...(W.magic.stages || [])]) if (o) potGroup.attach(o);
@@ -626,8 +632,32 @@ function setPaused(p) { if (p === paused) return; paused = p; if (p) sound.pause
 document.addEventListener('visibilitychange', () => setPaused(document.hidden));
 renderer.xr.addEventListener('sessionstart', () => {
   const s = renderer.xr.getSession();
-  s.addEventListener('visibilitychange', () => setPaused(s.visibilityState !== 'visible'));
+  s.addEventListener('visibilitychange', () => {
+    setPaused(s.visibilityState !== 'visible');
+    // back from the Meta menu (or the headset's own recentre): seat the player again once the head is tracked
+    if (s.visibilityState === 'visible') reseat();
+  });
+  const ref = renderer.xr.getReferenceSpace();
+  if (ref && ref.addEventListener) ref.addEventListener('reset', reseat);
 });
+function reseat() { xrCentred = 0; xrFrames = 0; }
+
+// The Meta menu gesture (palm turned to face you, then a thumb-index pinch) belongs to the headset, not the game:
+// a pinch that starts in that pose is ignored here, so it never picks, grabs or draws anything.
+function guardSystemGesture() {
+  if (!renderer.xr.isPresenting) return;
+  const head = new THREE.Vector3(); eyesCentre(head);
+  input.hands.forEach((h) => {
+    if (!h.present) { h.system = false; h.sysBlock = false; return; }
+    const to = head.clone().sub(h.palm), d = to.length(); to.normalize();
+    h.system = h.palmNormal.dot(to) > (h.system ? 0.45 : 0.6) && d < 0.7 && h.palm.y > head.y - 0.5;
+    if (h.pinchStarted && h.system) h.sysBlock = true;
+    if (h.sysBlock) {
+      if (!h.pinching) { h.sysBlock = false; h.pinchEnded = false; return; }
+      h.pinching = false; h.pinchStarted = false; h.pinchEnded = false;
+    }
+  });
+}
 
 function loop() { step(paused ? 0 : Math.min(clock.getDelta(), 0.05)); }
 if (DEBUG) window.__tick = (seconds, dt = 1 / 30) => { for (let i = 0; i < seconds / dt; i++) step(dt); };
@@ -644,6 +674,7 @@ function step(dt) {
   }
   desktop.update();
   input.update(dt);
+  guardSystemGesture();
   if (W && phase.name !== 'loading') {
     updatePhases(dt);
     flies.update(dt, time, input);

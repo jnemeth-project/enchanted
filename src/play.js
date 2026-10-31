@@ -544,7 +544,13 @@ class ShelfThing {
     const o = this.o;
     if (this.held) {
       const h = this.held;
-      if (!h.present || !this.holding(h)) { h._holding = null; this.held = null; this.ret = 0; this.wait = 1.2; this.onLetGo && this.onLetGo(); return; }
+      if (!h.present || !this.holding(h)) {
+        h._holding = null; this.held = null; this.ret = 0; this.wait = 1.2; this.onLetGo && this.onLetGo();
+        // let go mid-swing, fast: a throw (the jar, for one, has something to say about that)
+        if (h.present && this.swing > 1.5 && this.onThrow) { this.wait = 0.5; this.onThrow(this.o.position.clone()); }
+        this.swing = 0; return;
+      }
+      this.swing = Math.max((this.swing || 0) * Math.exp(-dt * 8), h.speed || 0);
       this.place(h, dt);
     } else if (this.ret < 1) {
       // a moment where you dropped it, then it drifts softly back to its shelf
