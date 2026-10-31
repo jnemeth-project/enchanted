@@ -1,7 +1,7 @@
 // The way out and the settings, built into the forest: a small glowing magic door in the nearest big
-// tree on your right (signed "Main menu"), and an old-shop hanging sign above it ("Options").
+// tree on your right (signed "Leave the forest"), and an old-shop hanging sign above it ("Options").
 // Point at either and pinch (hands or controller), look at it (look to select) or click it.
-// Options opens a little floating panel: volume, mute, swap game, close.
+// Options opens a little floating panel: volume, mute, stop the game (or open the menu of things to do), close.
 import * as THREE from 'three';
 import { glowTexture, tweens } from './util.js';
 
@@ -81,8 +81,9 @@ export class Menu {
       g.font = `30px ${FONT}`; g.fillStyle = 'rgba(210, 222, 255, 0.75)'; g.fillText('Volume', W / 2, y + 128);
     }
     row(1, this.muted ? 'Sound on' : 'Mute', 'mute');
-    const nx = NEXT_GAME[this.mode] || NEXT_GAME.fireflies;
-    row(2, 'Swap to ' + nx.title, 'swap', nx.sub);
+    // a game running: stop it (back to just sitting in the forest). Otherwise: open the menu of things to do
+    if (this.mode) row(2, 'Stop the game', 'swap', 'back to just relaxing');
+    else row(2, 'Things to do', 'swap', 'the menu on the white tree');
     row(3, this.softEdges ? 'Calm motion: on' : 'Calm motion: off', 'edges', 'for motion sickness: gentler, softer edges');
     row(4, 'Re-centre view', 'recenter', 'sets your seated height again');
     row(5, 'Close', 'close');
@@ -118,7 +119,7 @@ export class Menu {
     if (key === 'mute') this.muted = !this.muted;
     if (key === 'edges') { this.softEdges = !this.softEdges; if (this.onSoftEdges) this.onSoftEdges(this.softEdges); }
     if (key === 'vol-' || key === 'vol+' || key === 'mute') { if (this.onVolume) this.onVolume(this.muted ? 0 : this.volume, this.volume, this.muted); }
-    if (key === 'swap') { this.show(false); if (this.onSwap) this.onSwap((NEXT_GAME[this.mode] || NEXT_GAME.fireflies).key); return; }
+    if (key === 'swap') { this.show(false); if (this.mode) { if (this.onStop) this.onStop(); } else if (this.onThings) this.onThings(); return; }
     this._drawPanel();
   }
 

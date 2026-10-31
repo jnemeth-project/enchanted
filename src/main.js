@@ -19,6 +19,7 @@ import { SkyGames } from './skygames.js';
 import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines, Playfield, Butterflies, DrawStick, FairyJar, ShelfLights } from './play.js';
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
+import { ThingsMenu } from './thingsmenu.js';
 import { tweens, clamp, glowTexture } from './util.js';
 import { loadState, beginNight, saveState, wateredTonight, nightKey } from './save.js';
 
@@ -85,7 +86,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
   options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
@@ -155,6 +156,11 @@ async function init() {
   menu.volume = options.volume; menu.muted = !!options.muted;
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
   menu.onMainMenu = toMainMenu; menu.onSwap = swapMode; menu.onRecenter = () => gentleRecenter(true);
+  // the menu of things to do, on the top shelf of the white tree: the only place games are offered
+  things = new ThingsMenu(scene, W, sound, effects);
+  things.onStart = playGame; things.onStop = stopGame;
+  menu.onStop = stopGame; menu.onThings = () => things.show(eyeRay().origin);
+  input.addPicker((r) => things.pick(r), { ui: true });
   menu.onVolume = (v, vol, muted) => { sound.setVolume(v); options.volume = vol; options.muted = muted; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
   input.addPicker((r) => choice.pickRay(r), { ui: true }); // the lanterns come first: they float in front of the door
   input.addPicker((r) => menu.pick(r), { ui: true });
@@ -200,7 +206,7 @@ function begin() {
   sound.start();
   phase.name = 'arrival'; phase.t = 0;
   session.t = 0; session.len = (options.session || 10) * 60;
-  if (!TUTORIAL) tweens.add(0.1, () => {}, { delay: 1.2, done: () => say(`Night ${state.nights}`, { width: 1.2, hold: 2.6 }) });
+  // a quiet arrival: no words at first, just the forest
 }
 
 function readOptions() {
@@ -276,13 +282,14 @@ function updatePhases(dt) {
   if (P === 'arrival') {
     if (phase.t > 1.0 && !guide.group.visible) { guide.appear(sleep.homeOf(sleep.order[0])); guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 }); }
     if (JUST_SIT) { if (phase.t > 3) startMode('fireflies'); return; }
-    if (!TUTORIAL) { if (phase.t > 4) askChoice(); return; }
-    // tutorial step 1: the butterfly boops a mushroom, the words say what to do
+    // the very first night, the butterfly quietly boops a mushroom to show they make music (no words)
     const b = touch.items.find((it) => it.kind === 'boop');
-    if (phase.t > 2.2 && touch.count === 0 && b && guide.mode !== 'tap') guide.tap(b.center, () => { b.flash = Math.max(b.flash, 0.6); sound.boop(b.center, b.hz); });
-    if (phase.t > 2.6 && !phase.saidBoop) { phase.saidBoop = true; say('Boop the mushrooms\nEach one has its own note'); }
-    if (touch.count > 0 && guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.35, 1.0, -0.8), { orbit: 0.08, speed: 0.9 });
-    if ((touch.count >= 2 && phase.t > 7) || phase.t > 14) askChoice();
+    if (TUTORIAL && phase.t > 3 && !phase.tapped && b && guide.mode !== 'tap') { phase.tapped = true; guide.tap(b.center, () => { b.flash = Math.max(b.flash, 0.6); sound.boop(b.center, b.hz); guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 }); }); }
+    if (phase.t > (TUTORIAL ? 9 : 6)) greet();
+  } else if (P === 'relax') {
+    // just sitting in the forest: nothing asked of you. Near the end, the rain comes if your mushroom needs it
+    if (remaining() < 80 && needsWater() && !phase.wrapping) { phase.wrapping = true; startRain(); }
+    else if (remaining() < 25 && !phase.wrapping) goodnight();
   } else if (P === 'fireflies') {
     // the butterfly shows the first boop on a firefly, and again if nothing happens for a while
     // the butterfly shows the game once: it boops one firefly, then the one with the same colour
@@ -327,23 +334,36 @@ function updatePhases(dt) {
   if (rain) guide.rainLevel = rain.level;
 }
 
-function askChoice() {
-  if (phase.name === 'choose') return;
-  phase.name = 'choose'; phase.t = 0;
-  guide.goTo(new THREE.Vector3(0, 1.3, -1.3), { orbit: 0.05, speed: 0.8 });
-  say('What would you like tonight?\nPoint and pinch, or look at one', { hold: 3.2 });
-  tweens.add(0.1, () => {}, { delay: 1.6, done: () => choice.show([
-    { key: 'fireflies', title: 'Firefly memory', sub: 'find the matching colours\nand water your mushroom', color: 0xd8ff7a },
-    { key: 'count', title: 'Counting stars', sub: 'lie back and count\nthe stars home', color: 0xbfd2ff },
-    { key: 'shapes', title: 'Star pictures', sub: 'lie back and join\nthe stars together', color: 0xffd9a8 },
-  ]) });
+// The butterfly says hello (one short line), then settles by the menu on the white tree and rests there
+function greet() {
+  if (phase.name === 'relax') return;
+  phase.name = 'relax'; phase.t = 0; phase.wrapping = false; state.tutorialDone = true; saveState(state);
+  say(state.nights <= 1 ? 'Welcome\nStay as long as you like' : 'Welcome back', { hold: 3.6 });
+  tweens.add(0.1, () => {}, { delay: 3.4, done: restGuide });
+}
+function restGuide() { if (things && things.boardC) guide.goTo(things.boardC.clone().add(new THREE.Vector3(0.2, 0.14, -0.08)), { orbit: 0.03, speed: 0.5 }); }
+
+// From the menu: start a game (stopping whatever was going on), or stop it and go back to just sitting
+function playGame(mode) {
+  if (phase.name === 'goodnight') return;
+  swapMode(mode);
+  things.setMode(mode);
+  if (!state.stopHintShown) { state.stopHintShown = true; saveState(state); tweens.add(0.1, () => {}, { delay: 9, done: () => { if (phase.mode === mode) say('To stop, open the menu again', { hold: 3.2 }); } }); }
+}
+function stopGame() {
+  const m = phase.mode; if (!m || phase.name === 'goodnight') return;
+  if (m === 'fireflies') { flies.dismiss(); sleep.quiet(1); touch.dimBoops(1); }
+  if (SKY(m)) { sky.stop(); const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); tweens.add(0.1, () => {}, { delay: 4, done: () => gentleRecenter() }); }
+  phase.mode = null; menu.mode = null; things.setMode(null); input.farHands = false;
+  phase.name = 'relax'; phase.t = 0; phase.wrapping = false;
+  restGuide();
 }
 
 function startMode(mode) {
   if (mode === 'stars') mode = 'count';
   const skyWasOpen = SKY(phase.mode);
   phase.mode = mode; phase.t = 0; phase.lastOutAt = 0; phase.shownOnce = false; phase.showing = false; phase.saidFlies = false; phase.wrapping = false;
-  menu.mode = mode;
+  menu.mode = mode; if (things) things.setMode(mode);
   if (guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
   if (mode === 'fireflies') {
     phase.name = 'fireflies';
@@ -361,16 +381,8 @@ function startMode(mode) {
     if (!skyWasOpen) { const from = W.canopy.uniform.value; tweens.add(8, (k) => W.canopy.set(from + (1 - from) * k * k * (3 - 2 * k))); }
     sky.start(mode); phase.shapesSeen = 0;
     // clear, step by step directions while the sky opens (each line waits for the last)
-    const steps = mode === 'count' ? [
-      ['Counting stars', 2.6], ['Lie back and look up\nat the sky', 3.4],
-      ['One star at a time will glow\ninside a ring of light', 4], ['Look at it and hold your gaze\nuntil the ring fills', 4],
-      ['Then count it in your head\nand wait for the next one', 4],
-    ] : [
-      ['Star pictures', 2.6], ['Lie back and look up\nat the sky', 3.4],
-      ['Some faint stars hide a picture\nOne glows inside a ring of light', 4.4], ['Look at it and hold your gaze\nuntil the ring fills', 4],
-      ['Each star you choose draws a line\nKeep going until the picture appears', 4.4],
-    ];
-    if (JUST_SIT) steps.splice(2);
+    const steps = [['Lie back and look up', 3], ['Look at the star in the ring\nuntil it fills', 4]];
+    if (JUST_SIT) steps.splice(1);
     let at = 0.5; for (const [text, hold] of steps) { tweens.add(0.1, () => {}, { delay: at, done: () => { if (phase.mode === mode) say(text, { hold }); } }); at += hold + 0.6; }
 
     // if you lie down, the forest follows: re-centre once you have settled
@@ -449,6 +461,8 @@ function showPot() {
 }
 
 function startRain() {
+  // the game (if any) is over for tonight: the rain is the night's last gentle thing
+  phase.mode = null; menu.mode = null; if (things) things.setMode(null);
   phase.name = 'rain'; phase.rainT = 0; phase.tellPour = undefined; phase.rainShown = false;
   showPot();
   rain.start(); seed.invite = true;
@@ -517,7 +531,7 @@ function snooze() {
   for (const c of seed.collection) for (const m of c.mats) if (m.userData.baseEmissive !== undefined) m.emissiveIntensity = m.userData.baseEmissive;
   guide.appear(sleep.homeOf(sleep.order[0])); guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 });
   say(session.snoozes >= MAX_SNOOZES ? 'Five more minutes\n(the last little while tonight)' : 'Five more minutes', { hold: 2.6 });
-  phase.name = 'snoozing'; tweens.add(0.1, () => {}, { delay: 3.2, done: () => { phase.name = 'idle'; askChoice(); } });
+  phase.name = 'snoozing'; tweens.add(0.1, () => {}, { delay: 3.2, done: () => { phase.name = 'relax'; phase.t = 0; phase.wrapping = false; restGuide(); } });
 }
 
 // the forest falls asleep bit by bit as the stars are counted, or the pictures made
@@ -571,7 +585,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar });
+  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -609,6 +623,7 @@ function step(dt) {
     twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); jar.update(dt, input, time); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
+    things.update(dt, input, time, eyeRay());
     if (phase.name !== 'goodnight') session.t += dt;
     sky.ownDwell = !gaze.enabled;
     sky.update(dt, time, input, renderer.xr.isPresenting ? 1.8 : renderer.domElement.height / 900);
