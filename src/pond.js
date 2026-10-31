@@ -110,7 +110,7 @@ export class Pond {
     // reflect the lanterns nearest the middle of the pond (the shader has room for a couple of dozen)
     this.lanterns.slice().sort((a, b) => a.p.distanceTo(this.centre) - b.p.distanceTo(this.centre)).slice(0, LANTERNS).forEach((L, i) => { L.ref = i; this.u.lant.value[i].set(L.p.x, L.p.y, L.p.z, 1); this.u.lcol.value[i].copy(L.col); });
     // fairy dust drifting over the water: hundreds of tiny twinkling motes in mint, gold, rose and lilac
-    const N = this.N = 364, pos = new Float32Array(N * 3), colr = new Float32Array(N * 3); this.mote = [];
+    const N = this.N = 146, pos = new Float32Array(N * 3), colr = new Float32Array(N * 3); this.mote = [];
     const pal = [0x9dffe0, 0xffe2a0, 0xffb3d9, 0xd2b8ff, 0xffffff].map((c) => new THREE.Color(c));
     for (let i = 0; i < N; i++) {
       let u, v; do { u = Math.random() * 2 - 1; v = Math.random() * 2 - 1; } while (u * u + v * v > 1);
