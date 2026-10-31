@@ -230,7 +230,8 @@ export class PotHint {
 export class DirtDrawing {
   constructor(scene, W, sound, effects) {
     this.sound = sound; this.effects = effects;
-    this.w = 0.62; this.d = 0.46; this.centre = new THREE.Vector3(0, 0, -0.5);
+    this.w = 0.9; this.d = 0.62; this.centre = new THREE.Vector3(0, 0, -0.58); // reachable with a fingertip near you, and further out with the drawing stick
+    this.tools = []; this.toolLast = new Map(); // other things that draw: the drawing stick's tip
     // the drawing surface hugs the ground: a fine grid whose every point sits just on the path
     const ground = [W.byName.Ground].filter(Boolean), ray = new THREE.Raycaster();
     const NX = 24, NZ = 18, geo = new THREE.PlaneGeometry(this.w, this.d, NX, NZ); geo.rotateX(-Math.PI / 2);
@@ -265,9 +266,11 @@ export class DirtDrawing {
   _line(u0, v0, u, v, at) {
     const g = this.g; g.lineCap = 'round'; g.lineJoin = 'round';
     // a groove pressed into the earth: a soft lighter rim of pushed-up soil, a darker brown furrow in the middle
-    g.strokeStyle = 'rgba(122, 86, 52, 0.55)'; g.lineWidth = 26; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
-    g.strokeStyle = 'rgba(58, 36, 18, 0.95)'; g.lineWidth = 16; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
-    g.strokeStyle = 'rgba(30, 18, 8, 0.95)'; g.lineWidth = 7; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke();
+    // (each layer is tucked under what is already there, so a line stays one smooth groove with no rings)
+    const seg = (c, w) => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke(); };
+    seg('rgb(30, 18, 8)', 7);
+    g.globalCompositeOperation = 'destination-over'; seg('rgb(58, 36, 18)', 16); seg('rgb(84, 58, 34)', 24);
+    g.globalCompositeOperation = 'source-over';
     this.tex.needsUpdate = true; this.inked = true;
     if (this.scratchT <= 0 && Math.hypot(u - u0, v - v0) > 2) { this.scratchT = 0.25; this.sound.rustle(at.clone(), 0.12); }
   }
@@ -307,6 +310,16 @@ export class DirtDrawing {
         if (over && v > 1.1 && this.wipe <= 0) { this.wipe = 1; this.sound.whoosh(palm); if (this.effects) this.effects.sparkle(palm, 0xd9f6ff, 18, 0.15); }
       }
     });
+    // the drawing stick: its tip scratches a line wherever it touches the dirt
+    for (const tool of this.tools) {
+      const tip = tool(); const key = tool;
+      const inside = tip && Math.abs(tip.x - this.centre.x) < this.w / 2 && Math.abs(tip.z - this.centre.z) < this.d / 2;
+      if (inside && tip.y < this._groundAt(tip) + 0.03) {
+        const [u, v] = this._uv(tip), last = this.toolLast.get(key);
+        if (last) this._line(last[0], last[1], u, v, tip);
+        this.toolLast.set(key, [u, v]);
+      } else this.toolLast.delete(key);
+    }
     if (this.wipe > 0) {
       this.wipe -= dt / 0.6;
       const g = this.g; g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 0, this.canvas.width, this.canvas.height); g.restore();
@@ -483,83 +496,166 @@ export class Playfield {
   }
 }
 
-// A jar of stars: pick it up, tilt it and the little lights drift up inside; shake it and they swirl.
-// Let go and it floats gently back to where it sat.
-export class StarJar {
-  constructor(W, sound, effects) {
-    this.o = W.jar; this.sound = sound; this.effects = effects; if (!this.o) return;
-    this.home = this.o.position.clone(); this.homeQ = this.o.quaternion.clone();
-    this.held = null; this.offQ = new THREE.Quaternion(); this.prevPos = this.o.position.clone(); this.prevVel = new THREE.Vector3(); this.ret = 0;
-    this.lights = []; const tex = glowTexture();
-    const cols = [0xfff1b8, 0xc8fff0, 0xffd6f4, 0xd6e6ff];
-    for (let i = 0; i < 16; i++) {
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: cols[i % cols.length], transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-      sp.scale.setScalar(0.016); this.o.add(sp);
-      const p = new THREE.Vector3((Math.random() - 0.5) * 0.06, 0.02 + Math.random() * 0.1, (Math.random() - 0.5) * 0.06);
-      this.lights.push({ sp, p, v: new THREE.Vector3(), ph: Math.random() * 10 });
-    }
+// the hand's orientation, from the palm's facing and the line from wrist to knuckles
+function handQ(h) {
+  const y = h.palm.clone().sub(h.wrist).normalize(), x = h.palmNormal.clone().normalize();
+  const z = new THREE.Vector3().crossVectors(x, y).normalize(); x.crossVectors(y, z).normalize();
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+}
+const v3 = (s, d) => (s ? new THREE.Vector3(...String(s).split(',').map(Number)) : d.clone());
+
+// Something that lives on a shelf of the wise tree: pinch it to take it, it stays in your hand the way you
+// hold it, and when you let go it floats gently back to its place on the shelf.
+class ShelfThing {
+  constructor(o, sound, grabR) {
+    this.o = o; this.sound = sound; this.grabR = grabR; if (!o) return;
+    this.home = o.position.clone(); this.homeQ = o.quaternion.clone();
+    this.held = null; this.offQ = new THREE.Quaternion(); this.offP = new THREE.Vector3(); this.ret = 1; this.wait = 0;
   }
-
-  _handQ(h) {
-    // the hand's orientation, from the palm's facing and the line from wrist to knuckles
-    const y = h.palm.clone().sub(h.wrist).normalize(), x = h.palmNormal.clone().normalize();
-    const z = new THREE.Vector3().crossVectors(x, y).normalize(); x.crossVectors(y, z).normalize();
-    return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
-  }
-
-  pick(ray) { return null; }
-
-  update(dt, input, time) {
+  // how far a pinch is from the thing (override for long things)
+  dist(p) { return this.o.position.distanceTo(p); }
+  grab(input) {
     if (!this.o) return;
-    const o = this.o, top = o.position.clone().add(new THREE.Vector3(0, 0.09, 0).applyQuaternion(o.quaternion));
-    input.hands.forEach((h, i) => {
+    input.hands.forEach((h) => {
       if (!h.present) return;
-      if (h.pinching && !h._jarWas && !h._holding && !this.held) {
-        const aim = input.aim && input.aim[i];
-        const near = h.pinchPoint.distanceTo(top) < 0.1;
-        const pointed = aim && aim.ray.distanceToPoint(top) < 0.07 && top.distanceTo(aim.ray.origin) < 2.5;
-        if (near || pointed) {
-          this.held = h; h._holding = this; this.fetch = near ? 1 : 0; this.from = o.position.clone();
-          this.offQ.copy(this._handQ(h)).invert().multiply(o.quaternion); this.grip = new THREE.Vector3(0, -0.09, 0);
-          this.sound.boop(top, 220);
-        }
+      const key = '_shelf' + this.name;
+      if (h.pinching && !h[key] && !h._holding && !this.held && this.dist(h.pinchPoint) < this.grabR) {
+        this.held = h; h._holding = this;
+        const hq = handQ(h); this.offQ.copy(hq).invert().multiply(this.o.quaternion);
+        this.offP.copy(this.o.position).sub(h.pinchPoint).applyQuaternion(hq.clone().invert());
+        this.sound.boop(this.o.position.clone(), 196); this.onGrab && this.onGrab();
       }
-      h._jarWas = h.pinching;
+      h[key] = h.pinching;
     });
+  }
+  move(dt) {
+    if (!this.o) return;
+    const o = this.o;
     if (this.held) {
       const h = this.held;
-      if (!h.present || !h.pinching) { h._holding = null; this.held = null; this.ret = 0; }
-      else {
-        const q = this._handQ(h).multiply(this.offQ); o.quaternion.slerp(q, Math.min(1, dt * 14));
-        const want = h.pinchPoint.clone().add(this.grip.clone().applyQuaternion(o.quaternion));
-        if (this.fetch < 1) { this.fetch = Math.min(1, this.fetch + dt / 0.3); o.position.copy(this.from).lerp(want, this.fetch * this.fetch); } else o.position.copy(want);
-      }
-    } else if (this.ret < 1 && !o.position.equals(this.home)) {
-      // floats softly back to where it sat
-      this.ret = Math.min(1, this.ret + dt / 1.2); const e = this.ret * this.ret * (3 - 2 * this.ret);
-      o.position.lerp(this.home, e * 0.25 + 0.02); o.quaternion.slerp(this.homeQ, e * 0.25 + 0.02);
+      if (!h.present || !h.pinching) { h._holding = null; this.held = null; this.ret = 0; this.wait = 1.2; this.onLetGo && this.onLetGo(); return; }
+      const hq = handQ(h); o.quaternion.slerp(hq.clone().multiply(this.offQ), Math.min(1, dt * 16));
+      o.position.copy(h.pinchPoint).add(this.offP.clone().applyQuaternion(hq));
+    } else if (this.ret < 1) {
+      // a moment where you dropped it, then it drifts softly back to its shelf
+      if (this.wait > 0) { this.wait -= dt; return; }
+      this.ret = Math.min(1, this.ret + dt / 1.6); const e = this.ret * this.ret * (3 - 2 * this.ret);
+      o.position.lerp(this.home, e * 0.22 + 0.015); o.quaternion.slerp(this.homeQ, e * 0.22 + 0.015);
       if (this.ret >= 1) { o.position.copy(this.home); o.quaternion.copy(this.homeQ); }
     }
-    // the little lights: they drift upward inside the jar (whichever way is up), wander, and swirl when shaken
-    const vel = o.position.clone().sub(this.prevPos).divideScalar(Math.max(dt, 1e-3)); const acc = vel.clone().sub(this.prevVel).divideScalar(Math.max(dt, 1e-3));
-    this.prevPos.copy(o.position); this.prevVel.copy(vel);
-    const inv = o.quaternion.clone().invert();
-    const upL = new THREE.Vector3(0, 1, 0).applyQuaternion(inv), accL = acc.clampLength(0, 40).applyQuaternion(inv);
-    const shake = Math.min(1, accL.length() / 25);
-    for (const L of this.lights) {
-      const f = upL.clone().multiplyScalar(0.06).addScaledVector(accL, -0.02);
-      f.x += Math.sin(time * 1.3 + L.ph) * 0.02; f.z += Math.cos(time * 1.1 + L.ph * 1.7) * 0.02;
-      // a swirl around the jar's axis that grows with shaking
-      f.x += -L.p.z * 4 * shake; f.z += L.p.x * 4 * shake;
-      L.v.addScaledVector(f, dt).multiplyScalar(Math.exp(-dt * 1.6));
-      L.p.addScaledVector(L.v, dt);
-      const rr = Math.hypot(L.p.x, L.p.z); if (rr > 0.042) { L.p.x *= 0.042 / rr; L.p.z *= 0.042 / rr; L.v.x *= -0.4; L.v.z *= -0.4; }
-      if (L.p.y < 0.012) { L.p.y = 0.012; L.v.y *= -0.4; } if (L.p.y > 0.125) { L.p.y = 0.125; L.v.y *= -0.4; }
-      L.sp.position.copy(L.p);
-      const tw = 0.75 + 0.25 * Math.sin(time * 2.5 + L.ph * 3);
-      L.sp.material.opacity = Math.min(1, tw + 0.6 * shake); L.sp.scale.setScalar(0.016 * (1 + 0.5 * shake));
+  }
+}
+
+// The fairy lights strung along the top of each shelf: a soft warm halo around every bulb, gently twinkling
+export class ShelfLights {
+  constructor(W, scene) {
+    const g = W.byName.WiseGlow, list = ((g && g.userData.bulbs) || '').split(';').filter(Boolean), tex = glowTexture();
+    this.list = list.map((t, i) => {
+      const [x, y, z] = t.split(',').map(Number), p = new THREE.Vector3(x, z, -y); // Blender to the game's axes
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xffb257, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+      sp.position.copy(p); sp.scale.setScalar(0.045); scene.add(sp);
+      return { sp, ph: i * 1.7 };
+    });
+  }
+  update(time) { for (const b of this.list) b.sp.material.opacity = 0.42 + 0.18 * Math.sin(time * 1.6 + b.ph) * Math.sin(time * 0.7 + b.ph * 0.3); }
+}
+
+// The drawing stick: take it from its shelf and scratch pictures into the dirt, further out than your fingers reach.
+export class DrawStick extends ShelfThing {
+  constructor(W, sound, dirt) {
+    super(W.stick, sound, 0.05); this.name = 'stick'; if (!this.o) return;
+    const u = this.o.userData || {};
+    this.a = v3(u.grip, new THREE.Vector3(0, -0.17, 0)); this.a.y = -0.17; this.b = v3(u.tip, new THREE.Vector3(0, 0.166, 0));
+    this.tipW = new THREE.Vector3();
+    if (dirt) dirt.tools.push(() => (this.held || this.ret < 1 ? this.tip() : null));
+  }
+  tip() { return this.tipW.copy(this.b).applyMatrix4(this.o.matrixWorld); }
+  dist(p) {
+    // anywhere along the stick counts (it is long and thin)
+    this.o.updateMatrixWorld(); const a = this.a.clone().applyMatrix4(this.o.matrixWorld), b = this.b.clone().applyMatrix4(this.o.matrixWorld);
+    return new THREE.Line3(a, b).closestPointToPoint(p, true, tmp).distanceTo(p);
+  }
+  update(dt, input) { if (!this.o) return; this.grab(input); this.move(dt); this.o.updateMatrixWorld(); }
+}
+
+// The fairy light jar: little lights drift in the air around you. Take the jar from its shelf and scoop them
+// up with its open mouth, one by one; they glow and swirl inside. Tip the jar upside down and they pour out
+// and float free again. Put it down and it carries its lights back to the shelf, glowing there.
+export class FairyJar extends ShelfThing {
+  constructor(W, scene, sound, effects) {
+    super(W.jar, sound, 0.09); this.name = 'jar'; this.effects = effects; if (!this.o) return;
+    this.scene = scene; this.inside = []; this.free = []; this.pourT = 0;
+    // clear glass you can see the lights through
+    this.o.traverse((m) => { if (m.isMesh && /glass/i.test(m.material.name || '')) { m.material = m.material.clone(); Object.assign(m.material, { transparent: true, opacity: 0.2, depthWrite: false, transmission: 0, metalness: 0, roughness: 0.1 }); m.material.color.setRGB(0.7, 0.8, 0.9); if (m.material.emissive) m.material.emissive.setRGB(0.05, 0.06, 0.07); m.material.needsUpdate = true; m.renderOrder = 4; } });
+    const tex = glowTexture(), cols = [0xffe6a8, 0xffd29a, 0xfff2c8, 0xc8fff0, 0xffd6f4];
+    // where the free lights wander: around you at arm's length, never right in front of your eyes
+    const spots = [[-62, 0.62, 0.42], [-30, 0.58, 0.32], [28, 0.6, 0.34], [60, 0.64, 0.46], [-48, 0.7, 0.72], [44, 0.72, 0.7], [-82, 0.55, 0.62], [84, 0.56, 0.6], [-14, 0.68, 0.5], [14, 0.7, 0.62]];
+    spots.forEach(([a, r, y], i) => {
+      const ang = THREE.MathUtils.degToRad(a), home = new THREE.Vector3(Math.sin(ang) * r, y, -Math.cos(ang) * r);
+      const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: cols[i % cols.length], transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: cols[i % cols.length], transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
+      core.scale.setScalar(0.022); halo.scale.setScalar(0.07); scene.add(core); core.add(halo); halo.scale.setScalar(3.2);
+      this.free.push({ sp: core, home, p: home.clone(), ph: Math.random() * 10, state: 'free', t: 0, hz: [523.25, 587.33, 659.25, 783.99, 880][i % 5] });
+    });
+    this.all = [...this.free];
+    // the jar's mouth and floor, measured from the model itself
+    const box = new THREE.Box3().setFromObject(this.o), sc = this.o.scale.y || 1;
+    this.mouthL = new THREE.Vector3(0, (box.max.y - this.o.position.y - 0.01) / sc, 0);
+    this.floorY = box.min.y - this.o.position.y + 0.014; this.topY = box.max.y - this.o.position.y - 0.03;
+    this.grabR = Math.max(0.08, (box.max.y - box.min.y) * 0.6);
+  }
+  mouth() { return this.mouthL.clone().applyQuaternion(this.o.quaternion).add(this.o.position); }
+  update(dt, input, time) {
+    if (!this.o) return;
+    this.grab(input); this.move(dt);
+    const o = this.o, up = new THREE.Vector3(0, 1, 0).applyQuaternion(o.quaternion), m = this.mouth();
+    // scoop: a free light close to the open mouth flies in
+    if (this.held && up.y > -0.2) for (const L of this.all) {
+      if (L.state === 'free' && L.p.distanceTo(m) < 0.12) {
+        L.state = 'in'; L.t = 0; L.from = L.p.clone(); L.q = new THREE.Vector3((Math.random() - 0.5) * 0.05, this.floorY + 0.01 + Math.random() * (this.topY - this.floorY - 0.02), (Math.random() - 0.5) * 0.05); L.v = new THREE.Vector3();
+        this.sound.chime ? this.sound.chime(m.clone(), L.hz) : this.sound.boop(m.clone(), L.hz);
+        if (this.effects) this.effects.sparkle(m.clone(), 0xffe2a0, 10, 0.05);
+        if (this.all.every((x) => x.state !== 'free') && this.effects) this.effects.sparkle(m.clone(), 0xffe2a0, 40, 0.12);
+      }
+    }
+    // tip it upside down and they pour out, one at a time
+    this.pourT = Math.max(0, this.pourT - dt);
+    if (this.held && up.y < -0.45 && this.pourT <= 0) {
+      const L = this.all.find((x) => x.state === 'in');
+      if (L) { L.state = 'out'; L.rest = null; L.t = 0; L.from = L.sp.getWorldPosition(new THREE.Vector3()); this.pourT = 0.25; this.sound.boop(m.clone(), L.hz * 0.5); }
+    }
+    const inv = o.quaternion.clone().invert(), upL = new THREE.Vector3(0, 1, 0).applyQuaternion(inv);
+    for (const L of this.all) {
+      const tw = 0.75 + 0.25 * Math.sin(time * 2.4 + L.ph * 3);
+      if (L.state === 'free') {
+        // a slow wandering drift around its spot
+        L.p.set(L.home.x + Math.sin(time * 0.31 + L.ph) * 0.05, L.home.y + Math.sin(time * 0.47 + L.ph * 2) * 0.035, L.home.z + Math.cos(time * 0.27 + L.ph) * 0.05);
+        L.sp.position.copy(L.p); L.sp.material.opacity = tw;
+      } else if (L.state === 'in') {
+        // inside the jar: drifting upward (whichever way is up), bumping softly against the glass
+        if (L.sp.parent !== o) { L.t = Math.min(1, L.t + dt / 0.35); const w = L.from.clone().lerp(o.localToWorld(L.q.clone()), L.t * L.t); L.sp.position.copy(w); if (L.t >= 1) { o.add(L.sp); L.sp.position.copy(L.q); L.sp.scale.setScalar(0.02 / o.scale.x); } }
+        else {
+          // each light floats around its own spot in the jar (spread top to bottom), wandering slowly; when the jar
+          // tilts they drift a little toward whichever way is up
+          if (!L.rest) L.rest = new THREE.Vector3((Math.random() - 0.5) * 0.05, this.floorY + 0.012 + Math.random() * (this.topY - this.floorY - 0.04), (Math.random() - 0.5) * 0.05);
+          const f = L.rest.clone().sub(L.q).multiplyScalar(2.2).addScaledVector(upL, 0.015);
+          f.x += Math.sin(time * 1.3 + L.ph) * 0.03; f.y += Math.sin(time * 0.9 + L.ph * 2.3) * 0.02; f.z += Math.cos(time * 1.1 + L.ph * 1.7) * 0.03;
+          L.v.addScaledVector(f, dt).multiplyScalar(Math.exp(-dt * 1.4)); L.q.addScaledVector(L.v, dt);
+          const rr = Math.hypot(L.q.x, L.q.z); if (rr > 0.04) { L.q.x *= 0.04 / rr; L.q.z *= 0.04 / rr; L.v.x *= -0.4; L.v.z *= -0.4; }
+          if (L.q.y < this.floorY) { L.q.y = this.floorY; L.v.y *= -0.4; } if (L.q.y > this.topY) { L.q.y = this.topY; L.v.y *= -0.4; }
+          L.sp.position.copy(L.q).divideScalar(o.scale.x);
+        }
+        L.sp.material.opacity = tw;
+      } else if (L.state === 'out') {
+        // poured out: it floats back up to its place in the air
+        if (L.sp.parent !== this.scene) { this.scene.add(L.sp); L.sp.scale.setScalar(0.022); }
+        L.t = Math.min(1, L.t + dt / 2.2); const e = L.t * L.t * (3 - 2 * L.t);
+        L.p.copy(L.from).lerp(L.home, e); L.p.y += Math.sin(L.t * Math.PI) * 0.08; L.sp.position.copy(L.p); L.sp.material.opacity = tw;
+        if (L.t >= 1) L.state = 'free';
+      }
     }
   }
+  get count() { return this.all ? this.all.filter((x) => x.state === 'in').length : 0; }
 }
 
 // A few butterflies drifting slowly among the trees in the distance

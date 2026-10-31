@@ -5,7 +5,7 @@
 //                    others while you count along. Each one comes a little slower, and every ten
 //                    the night grows a little darker. (Counting sheep, under the stars.)
 //   Star pictures  - a handful of dim stars waits; look at the glowing one and a trail of stardust
-//                    joins it to the last. Count them as you go until a simple, random picture
+//                    joins it to the last. Count them as you go (twenty to thirty-odd stars) until a random picture
 //                    appears (a teacup, a leaf, a sailboat...). Then it fades and a completely
 //                    unrelated one begins, a little slower and dimmer. (The "cognitive shuffle".)
 import * as THREE from 'three';
@@ -39,6 +39,39 @@ const SHAPES = [
   { name: 'a crescent moon', strokes: [[[0.2, 0.9], [-0.42, 0.55], [-0.62, 0], [-0.42, -0.55], [0.2, -0.9], [-0.05, -0.42], [-0.15, 0], [-0.05, 0.42], [0.2, 0.9]]] },
   { name: 'a watering can', strokes: [[[-0.55, 0.35], [-0.55, -0.6], [0.3, -0.6], [0.3, 0.35], [-0.55, 0.35]], [[0.3, -0.25], [0.88, 0.42]], [[-0.55, 0.12], [-0.85, -0.05], [-0.55, -0.32]]] },
 ];
+
+// a few richer pictures for grown-ups, built from arcs and lines
+const arc = (cx, cy, r, a0, a1, n, ry = r) => Array.from({ length: n + 1 }, (_, i) => { const a = THREE.MathUtils.degToRad(a0 + (a1 - a0) * i / n); return [+(cx + Math.cos(a) * r).toFixed(3), +(cy + Math.sin(a) * ry).toFixed(3)]; });
+SHAPES.push(
+  { name: 'a lighthouse', strokes: [[[-0.32, -0.9], [-0.18, 0.35], [0.18, 0.35], [0.32, -0.9], [-0.32, -0.9]], [[-0.24, 0.35], [-0.24, 0.6], [0.24, 0.6], [0.24, 0.35]], [[-0.24, 0.6], [0, 0.85], [0.24, 0.6]], [[0.3, 0.5], [0.9, 0.7]], [[0.3, 0.45], [0.9, 0.25]], [[-0.27, -0.3], [0.27, -0.3]]] },
+  { name: 'a teapot', strokes: [arc(0, -0.1, 0.55, 0, 180, 6, 0.5).concat([[-0.55, -0.1], [-0.45, -0.55], [0.45, -0.55], [0.55, -0.1]]), [[0.45, -0.3], [0.85, 0.15], [0.95, 0.3]], arc(-0.6, -0.25, 0.22, 90, 270, 4), [[-0.12, 0.4], [0, 0.55], [0.12, 0.4]]] },
+  { name: 'a swan', strokes: [[[-0.8, -0.35], [-0.5, -0.65], [0.35, -0.65], [0.7, -0.35], [0.4, -0.15], [-0.2, -0.2], [-0.8, -0.35]], [[0.4, -0.15], [0.48, 0.25], [0.3, 0.55], [0.38, 0.8], [0.6, 0.78], [0.75, 0.7]], [[-0.2, -0.2], [-0.45, 0.05], [-0.62, -0.18]]] },
+  { name: 'a whale', strokes: [[[-0.9, 0.0], [-0.55, 0.35], [0.1, 0.38], [0.6, 0.1], [0.75, -0.25], [0.3, -0.42], [-0.4, -0.35], [-0.9, 0.0]], [[0.6, 0.1], [0.92, 0.45], [0.95, 0.05], [0.75, -0.25]], [[-0.55, 0.35], [-0.6, 0.62], [-0.45, 0.8]], [[-0.6, 0.62], [-0.78, 0.78]]] },
+  { name: 'a butterfly', strokes: [[[0, -0.6], [0, 0.45]], [[0, 0.3], [-0.45, 0.8], [-0.9, 0.55], [-0.6, 0.05], [0, 0.05]], [[0, 0.3], [0.45, 0.8], [0.9, 0.55], [0.6, 0.05], [0, 0.05]], [[0, 0.0], [-0.55, -0.15], [-0.6, -0.6], [0, -0.3]], [[0, 0.0], [0.55, -0.15], [0.6, -0.6], [0, -0.3]], [[0, 0.45], [-0.18, 0.72]], [[0, 0.45], [0.18, 0.72]]] },
+  { name: 'a bicycle', strokes: [arc(-0.55, -0.35, 0.36, 0, 360, 10), arc(0.55, -0.35, 0.36, 0, 360, 10), [[-0.55, -0.35], [-0.12, 0.2], [0.42, 0.2], [0.55, -0.35]], [[-0.12, 0.2], [0.02, -0.35], [0.42, 0.2]], [[-0.18, 0.32], [0.02, 0.32]], [[0.42, 0.2], [0.38, 0.42], [0.55, 0.45]]] },
+  { name: 'an anchor', strokes: [[[0, 0.62], [0, -0.75]], arc(0, 0.78, 0.15, 0, 360, 8), [[-0.35, 0.35], [0.35, 0.35]], arc(0, -0.25, 0.62, 190, 350, 8)] },
+  { name: 'an owl', strokes: [arc(0, -0.05, 0.62, 0, 360, 14, 0.82), arc(-0.25, 0.25, 0.17, 0, 360, 6), arc(0.25, 0.25, 0.17, 0, 360, 6), [[-0.08, 0.05], [0, -0.1], [0.08, 0.05]], [[-0.5, 0.6], [-0.42, 0.95], [-0.22, 0.72]], [[0.5, 0.6], [0.42, 0.95], [0.22, 0.72]]] },
+  { name: 'a crown', strokes: [[[-0.8, -0.5], [0.8, -0.5], [0.85, 0.45], [0.42, 0.0], [0, 0.65], [-0.42, 0.0], [-0.85, 0.45], [-0.8, -0.5]], [[-0.8, -0.28], [0.8, -0.28]]] },
+);
+
+// every picture is drawn with plenty of stars: long lines get extra stars along them (each a touch off the
+// ruler-straight line, as real stars would be), so a picture takes 20 to 32 stars to join
+function densify(def, target) {
+  const segs = []; let total = 0;
+  for (const st of def.strokes) for (let i = 1; i < st.length; i++) { const d = Math.hypot(st[i][0] - st[i - 1][0], st[i][1] - st[i - 1][1]); segs.push(d); total += d; }
+  const corners = new Set(def.strokes.flat().map((q) => q[0].toFixed(2) + ',' + q[1].toFixed(2))).size;
+  const extra = Math.max(0, target - corners), step = total / Math.max(1, extra + segs.length);
+  return { ...def, strokes: def.strokes.map((st) => {
+    const out = [st[0]];
+    for (let i = 1; i < st.length; i++) {
+      const a = st[i - 1], b = st[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(0, Math.round(d / step) - 1);
+      const nx = -(b[1] - a[1]) / (d || 1), ny = (b[0] - a[0]) / (d || 1);
+      for (let k = 1; k <= n; k++) { const t = k / (n + 1), j = (Math.random() - 0.5) * 0.05; out.push([a[0] + (b[0] - a[0]) * t + nx * j, a[1] + (b[1] - a[1]) * t + ny * j]); }
+      out.push(b);
+    }
+    return out;
+  }) };
+}
 
 // the ring around the star to look at: always there, and it fills up while you look
 const ringVS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`;
@@ -218,12 +251,13 @@ export class SkyGames {
 
   // ---------------------------------------------------------------- star pictures
   _nextShape() {
-    const def = SHAPES[this.order[this.shapeIdx % this.order.length]]; this.shapeIdx++;
+    // pictures grow richer as the night goes on: about 20 stars at first, up to about 32
+    const def = densify(SHAPES[this.order[this.shapeIdx % this.order.length]], Math.min(32, 20 + this.shapesDone * 3)); this.shapeIdx++;
     if (this.shapeIdx % this.order.length === 0) this.order = shuffle(this.order);
     // a patch of sky, high overhead, its "up" toward your head when you lie back
     // right where you are looking, small enough to take in with your eyes alone, upright to you
     const b = this._rest(), c = b.c, zUp = b.up, right = b.right;
-    const half = THREE.MathUtils.degToRad(rand(10, 11)); // about 20 degrees across: spread out, still within easy eye movement
+    const half = THREE.MathUtils.degToRad(rand(11.5, 12.5)); // about 24 degrees across: room for many stars, still within easy eye movement
     const toDir = ([x, y]) => c.clone().addScaledVector(right, Math.tan(half) * x).addScaledVector(zUp, Math.tan(half) * y).normalize();
     // stars are shared where strokes meet; steps are the stars to look at, in order
     const stars = [], key = (q) => q[0].toFixed(2) + ',' + q[1].toFixed(2), byKey = new Map(), steps = [];

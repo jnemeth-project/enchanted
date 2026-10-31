@@ -16,7 +16,7 @@ import { Guide } from './guide.js';
 import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { SkyGames } from './skygames.js';
-import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines, Playfield, Butterflies } from './play.js';
+import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines, Playfield, Butterflies, DrawStick, FairyJar, ShelfLights } from './play.js';
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { tweens, clamp, glowTexture } from './util.js';
@@ -85,7 +85,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
   options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
@@ -137,6 +137,8 @@ async function init() {
   mushThrow = new MushroomThrow(touch, W, sound, effects);
   playfield = new Playfield(W, touch, sound, effects); pebbles.field = mushThrow.field = playfield;
   flutter = new Butterflies(Guide, scene);
+  // the wise tree's shelves: the drawing stick and the fairy light jar
+  stick = new DrawStick(W, sound, dirt); jar = new FairyJar(W, scene, sound, effects); shelfLights = new ShelfLights(W, scene);
   // the magic mushroom pot only appears when the rain comes (it has nothing to do before then)
   potGroup = new THREE.Group(); scene.add(potGroup);
   for (const o of [W.magic.stump, W.byName.G_Shadow_SeedStump, W.magic.dust, ...(W.magic.stages || [])]) if (o) potGroup.attach(o);
@@ -148,7 +150,7 @@ async function init() {
     ...crystals.list.map((c) => ({ at: c.c, r: c.r, hz: c.hz })),
     ...pebbles.list.filter((p) => p.state === 'rest').map((p) => ({ at: p.o.position, r: 0.06, hz: 247 })),
   ]);
-  outlines = new Outlines([...W.boops, ...W.crystals, ...W.pebbles, ...W.dandelions, ...W.puffs]);
+  outlines = new Outlines([...W.boops, ...W.crystals, ...W.pebbles, ...W.dandelions, ...W.puffs, W.stick].filter(Boolean)); // (not the glass jar: an outline would hide the lights inside)
   applyAccess();
   menu.volume = options.volume; menu.muted = !!options.muted;
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
@@ -569,7 +571,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter });
+  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -604,7 +606,7 @@ function step(dt) {
     if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); crystals.update(dt, input); dirt.update(dt, input);
+    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); jar.update(dt, input, time); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
     if (phase.name !== 'goodnight') session.t += dt;

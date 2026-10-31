@@ -8,7 +8,7 @@ import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
 // bump this whenever the forest is re-exported, so headsets never keep showing an old saved copy
-export const FOREST_VERSION = 'clear2';
+export const FOREST_VERSION = 'wise3';
 export const EYE = new THREE.Vector3(0, 0.82, 0); // sitting right on the forest floor (a real seated-on-the-ground eye height), not on a chair
 export const shaderMats = []; // every material with a `time` uniform
 
@@ -118,7 +118,7 @@ export async function loadWorld(scene, onProgress) {
 
   // Index everything by its role.
   const W = {
-    root, byName: {}, clusters: [], dust: [], ribbons: [], pebbles: [], crystals: [], knock: [], jar: null, boops: [], ferns: [], puffs: [], dandelions: [], dandelionSeeds: [],
+    root, byName: {}, clusters: [], dust: [], ribbons: [], pebbles: [], crystals: [], knock: [], jar: null, stick: null, boops: [], ferns: [], puffs: [], dandelions: [], dandelionSeeds: [],
     magic: {}, dim: {}, grounds: [], sky: null, moon: {}, seat: new THREE.Vector3(),
   };
   const nodes = [];
@@ -133,6 +133,7 @@ export async function loadWorld(scene, onProgress) {
     else if (n.startsWith('G_CrystalTouch_')) W.crystals.push(o);
     else if (n.startsWith('G_Mushroom_LoneFar_')) W.knock.push(o);
     else if (n === 'G_StarJar') W.jar = o;
+    else if (n === 'G_DrawStick') W.stick = o;
     else if (n.startsWith('Boop_')) W.boops.push(o);
     else if (n.startsWith('Touch_Fern')) W.ferns.push(o);
     else if (n.startsWith('G_Puffball_')) W.puffs.push(o);
