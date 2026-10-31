@@ -72,6 +72,7 @@ export class Gaze {
     // things within arm's reach are for your hands: looking only chooses things further away
     // (except what is meant to be used by looking, like the fireflies in their game or the options panel)
     if (c && !c.gazeNear && c.point && c.point.distanceTo(o) < 1.2) c = null;
+    if (c && c.handsOnly) c = null; // plants, stones and crystals are for your hands, never chosen by looking
     if (c && c.key === this.key) this.t += dt; else { this.key = c ? c.key : null; this.t = 0; }
     this.fade += ((c ? 1 : 0) - this.fade) * Math.min(1, dt * 8);
     const m = this.ring.material.uniforms;
@@ -80,7 +81,7 @@ export class Gaze {
     m.opacity.value = this.fade; m.progress.value = Math.min(1, this.t / need);
     if (c) {
       const d = c.point.distanceTo(o);
-      this.ring.position.copy(c.point); this.ring.quaternion.copy(q); this.ring.scale.setScalar(Math.max(d * 0.07, (c.size || 0.06) * 1.9));
+      this.ring.position.copy(c.point); this.ring.quaternion.copy(q); this.ring.scale.setScalar(Math.min(d * 0.16, Math.max(d * 0.07, (c.size || 0.06) * 1.9))); // never bigger than a small part of your view
     }
     if (c && this.t >= need) {
       this.t = 0; this.key = null;

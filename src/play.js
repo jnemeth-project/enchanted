@@ -78,7 +78,7 @@ export class Pebbles {
   pick(ray) {
     for (const pb of this.list) {
       if (pb.state !== 'rest') continue;
-      if (ray.distanceToPoint(pb.o.position) < 0.07) return { key: pb, size: 0.06, point: pb.o.position.clone(), fire: () => {
+      if (ray.distanceToPoint(pb.o.position) < 0.07) return { key: pb, size: 0.06, handsOnly: true, point: pb.o.position.clone(), fire: () => {
         const dir = ray.direction.clone(); dir.y = 0; dir.normalize();
         this._throw(pb, dir.multiplyScalar(3.2).add(new THREE.Vector3(0, 3, 0)));
       } };
@@ -169,7 +169,7 @@ export class Crystals {
   }
 
   pick(ray) {
-    for (const cr of this.list) if (ray.distanceToPoint(cr.c) < cr.r) return { key: cr, size: cr.r, point: cr.c.clone(), fire: () => this.light(cr) };
+    for (const cr of this.list) if (ray.distanceToPoint(cr.c) < cr.r) return { key: cr, size: cr.r, handsOnly: true, point: cr.c.clone(), fire: () => this.light(cr) };
     return null;
   }
 

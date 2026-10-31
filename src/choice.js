@@ -16,7 +16,7 @@ function label(title, sub) {
 }
 
 // the lanterns float well out in front of you (not in your lap), and are drawn larger to match
-const DIST = 1.35, S = 1.85, Y = 0.98, SPREAD = THREE.MathUtils.degToRad(28);
+const DIST = 1.35, S = 1.85, Y = 0.84, SPREAD = THREE.MathUtils.degToRad(24), OFFSET = THREE.MathUtils.degToRad(-14); // a little to the left and below eye level: clear of the door and the sign
 
 export class Choice {
   constructor(scene, sound, eyeRay = null) {
@@ -28,7 +28,7 @@ export class Choice {
   show(opts) {
     this.group.clear(); this.options = [];
     opts.forEach((o, i) => {
-      const a = (i - (opts.length - 1) / 2) * SPREAD * (opts.length === 2 ? 1.2 : 1);
+      const a = OFFSET + (i - (opts.length - 1) / 2) * SPREAD * (opts.length === 2 ? 1.2 : 1);
       const at = new THREE.Vector3(Math.sin(a) * DIST, Y, -Math.cos(a) * DIST);
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: o.color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
       halo.scale.setScalar(0.22 * S); halo.position.copy(at);

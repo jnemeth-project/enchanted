@@ -44,7 +44,7 @@ void main(){ float f = max(dot(vN, vV), 0.); vec3 base = color * (0.35 + 0.75 * 
 // A gentle arc in front of you, raised a little above the eyes so the fireflies glow against the dark trunks (player faces -Z): rows x columns, slightly staggered.
 function arcSlots(n) {
   const rows = n > 12 ? 3 : 2, cols = Math.ceil(n / rows);
-  const span = n > 24 ? 118 : n > 12 ? 100 : n > 6 ? 80 : 64, R = n > 12 ? 0.5 : 0.47, ys = rows === 3 ? [0.52, 0.65, 0.78] : [0.58, 0.72]; // chest to shoulder height: easy to reach without sitting up
+  const span = n > 24 ? 118 : n > 12 ? 100 : n > 6 ? 80 : 64, R = n > 12 ? 0.5 : 0.47, ys = rows === 3 ? [0.66, 0.8, 0.94] : [0.72, 0.88]; // chest height up to eye level: easy to reach without sitting up or looking down
   const out = [];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols && out.length < n; c++) {
     const a = THREE.MathUtils.degToRad(-span / 2 + span * (c + (r % 2 ? 0.5 : 0.25)) / cols);

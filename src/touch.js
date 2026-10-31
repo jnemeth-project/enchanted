@@ -147,7 +147,7 @@ export class Touch {
       }
       if (d < bd) { bd = d; best = it; }
     }
-    return best ? { key: best, size: best.radius * 2, point: best.center.clone(), fire: () => this._fire(best, null) } : null;
+    return best ? { key: best, size: best.radius * 2, handsOnly: true, point: best.center.clone(), fire: () => this._fire(best, null) } : null;
   }
 
   setPalette(palette, neutralMap) { this.palette = palette.filter((p) => (p.weight || 0) >= 10); this.neutralMap = neutralMap; }
