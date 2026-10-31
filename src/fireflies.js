@@ -111,11 +111,7 @@ export class Fireflies {
         w.position.set(WING_HINGE.x * side, WING_HINGE.y, WING_HINGE.z); w.rotation.set(0, 0, 0); w.scale.set(side, 1, 1); inner.add(w); wings.push({ w, side });
       }
       model.scale.setScalar(1.8 * k); model.userData.side = Math.random() < 0.5 ? 1 : -1;
-    } else {
-      if (!this.orbGeo) this.orbGeo = new THREE.SphereGeometry(1, 22, 16);
-      orb = new THREE.Mesh(this.orbGeo, new THREE.ShaderMaterial({ uniforms: { color: { value: HIDDEN.clone() }, light: { value: 0 } }, vertexShader: orbVS, fragmentShader: orbFS, transparent: true }));
-      orb.scale.setScalar(0.021 * k); orb.renderOrder = 5; g.add(orb);
-    }
+    } // (no model: the classic firefly, just its soft glow, gold until it shows its colour)
     const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconTex(COLOURS[ci].shape), transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
     icon.scale.setScalar(0.026 * k); icon.renderOrder = 6; g.add(icon);
     if (model) icon.position.set(0, 0.045 * k, 0); // the colour's symbol floats just above the firefly when it shows
@@ -204,7 +200,7 @@ export class Fireflies {
       }
       f.icon.material.opacity = Math.min(1, show * 1.2) * f.light;
       f.icon.scale.setScalar(0.026 * (this.big ? 1.3 : 1) * (1 + 0.25 * show));
-      f.halo.material.opacity *= f.model ? 0.85 : 0.7; // a soft glow around the lantern
+      if (f.model) f.halo.material.opacity *= 0.85;
     }
     if (this.allDone && !this.doneFired && !this.list.some((f) => f.state === 'pair')) { this.doneFired = true; if (this.onAllDone) this.onAllDone(); }
   }
