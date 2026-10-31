@@ -45,13 +45,19 @@ export class Gaze {
   update(dt) {
     this.ring.visible = this.dot.visible = this.enabled;
     if (!this.enabled) return;
-    const cam = this.renderer.xr.isPresenting ? this.renderer.xr.getCamera() : this.camera;
+    const xr = this.renderer.xr.isPresenting, cam = xr ? this.renderer.xr.getCamera() : this.camera;
     const o = new THREE.Vector3(), q = new THREE.Quaternion();
-    cam.getWorldPosition(o); cam.getWorldQuaternion(q);
+    // in the headset, look from exactly between your two eyes (the combined XR camera sits a little behind and off-centre)
+    if (xr && cam.cameras && cam.cameras.length >= 2) {
+      const a = new THREE.Vector3(), b = new THREE.Vector3();
+      cam.cameras[0].getWorldPosition(a); cam.cameras[1].getWorldPosition(b); o.copy(a).add(b).multiplyScalar(0.5);
+      cam.cameras[0].getWorldQuaternion(q);
+    } else { cam.getWorldPosition(o); cam.getWorldQuaternion(q); }
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
     const ray = new THREE.Ray(o, dir);
     // a small soft dot shows where you are looking
     this.dot.position.copy(o).addScaledVector(dir, 1.2); this.dot.quaternion.copy(q); this.dot.scale.setScalar(0.004);
+    this.dot.visible = !xr && this.enabled; // no pointer dot in the headset (it sat too close to one eye)
     this.cool = Math.max(0, this.cool - dt);
     // waiting for a confirm: look at the little tick beside it until its ring fills too
     if (this.confirm) {
@@ -72,16 +78,17 @@ export class Gaze {
     // things within arm's reach are for your hands: looking only chooses things further away
     // (except what is meant to be used by looking, like the fireflies in their game or the options panel)
     if (c && !c.gazeNear && c.point && c.point.distanceTo(o) < 1.2) c = null;
+    if (c && c.point && c.point.distanceTo(o) < 0.5) c = null; // never put a ring right in front of your eyes
     if (c && c.handsOnly) c = null; // plants, stones and crystals are for your hands, never chosen by looking
     if (c && c.key === this.key) this.t += dt; else { this.key = c ? c.key : null; this.t = 0; }
-    this.fade += ((c ? 1 : 0) - this.fade) * Math.min(1, dt * 8);
+    this.fade += ((c ? 1 : 0) - this.fade) * Math.min(1, dt * 3); // the ring eases in gently, never pops on
     const m = this.ring.material.uniforms;
     // some things ask for a longer, deliberate look (the door out of the forest, the options)
     const need = (c && c.dwell) || DWELL;
     m.opacity.value = this.fade; m.progress.value = Math.min(1, this.t / need);
     if (c) {
       const d = c.point.distanceTo(o);
-      this.ring.position.copy(c.point); this.ring.quaternion.copy(q); this.ring.scale.setScalar(Math.min(d * 0.16, Math.max(d * 0.07, (c.size || 0.06) * 1.9))); // never bigger than a small part of your view
+      this.ring.position.copy(c.point); this.ring.quaternion.copy(q); this.ring.scale.setScalar(Math.min(d * 0.16, Math.max(d * 0.07, (c.size || 0.06) * 1.9)) * (0.7 + 0.3 * this.fade)); // small, and never bigger than a little part of your view
     }
     if (c && this.t >= need) {
       this.t = 0; this.key = null;

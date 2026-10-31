@@ -340,7 +340,7 @@ function startMode(mode) {
     phase.name = 'fireflies';
     input.farHands = false;
     // the forest's own glow quiets down so the fireflies stand out clearly in front of you
-    sleep.quiet(0.32); touch.dimBoops(0.55);
+    sleep.quiet(0.32); touch.dimBoops(1); // the musical mushrooms keep their full colour (the fireflies are solid and bright enough now)
     // levels: 5 pairs (10 fireflies) to start, two more pairs for every board you finish, for as long as the session lasts
     state.tutorialDone = true; saveState(state);
     startLevel();
