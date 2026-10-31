@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { glowTexture } from './util.js';
 
 const RIPPLES = 8, LANTERNS = 24;
-const LCOL = [[1.0, 0.72, 0.32], [1.0, 0.56, 0.42], [1.0, 0.55, 0.72], [0.5, 1.0, 0.8], [1.0, 0.85, 0.5]];
+const LCOL = [[1.0, 0.62, 0.22], [1.0, 0.45, 0.32], [1.0, 0.42, 0.66], [0.35, 1.0, 0.72], [1.0, 0.8, 0.38]];
+const GCOL = [[1.0, 0.82, 0.45], [0.6, 1.0, 0.82], [1.0, 0.7, 0.85]];
 const VS = `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const FS = `
 #define LANTERNS ${LANTERNS}
@@ -101,10 +102,10 @@ export class Pond {
     // the lanterns hanging above the water: each gets a soft halo that flickers gently, like a candle inside paper
     const tex = glowTexture();
     this.lanterns = String(o.userData.lanterns || '').split(';').filter(Boolean).map((t, i) => {
-      const [x, y, z, ci] = t.split(',').map(Number), p = new THREE.Vector3(x, z, -y), col = new THREE.Color(...LCOL[ci % LCOL.length]);
-      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: col, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
-      halo.position.copy(p); halo.scale.setScalar(0.55); scene.add(halo);
-      return { p, col, halo, ph: Math.random() * 10 };
+      const [x, y, z, ci, r = 0.09] = t.split(',').map(Number), p = new THREE.Vector3(x, z, -y), col = new THREE.Color(...LCOL[ci % LCOL.length]);
+      // two halos: a warm bright glow hugging the paper, and a wide soft one lighting the air around it
+      const mk = (op, sc) => { const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: col, transparent: true, opacity: op, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })); h.position.copy(p); h.scale.setScalar(sc); scene.add(h); return h; };
+      return { p, col, halo: mk(0.85, r * 5.5), wide: mk(0.28, r * 16), ph: Math.random() * 10 };
     });
     // reflect the lanterns nearest the middle of the pond (the shader has room for a couple of dozen)
     this.lanterns.slice().sort((a, b) => a.p.distanceTo(this.centre) - b.p.distanceTo(this.centre)).slice(0, LANTERNS).forEach((L, i) => { L.ref = i; this.u.lant.value[i].set(L.p.x, L.p.y, L.p.z, 1); this.u.lcol.value[i].copy(L.col); });
@@ -124,6 +125,16 @@ export class Pond {
       m.material = new THREE.ShaderMaterial({ uniforms: this.u, vertexShader: VS, fragmentShader: FS, fog: false, transparent: true, depthWrite: false });
       m.renderOrder = 1;
     });
+    // little lights resting high on trees all through the forest, like fireflies settled for the night: each one
+    // breathes slowly on its own rhythm, now and then glowing a little brighter
+    this.glows = String(o.userData.treeglows || '').split(';').filter(Boolean).map((t) => {
+      const [x, y, z, ci] = t.split(',').map(Number), col = new THREE.Color(...GCOL[ci % GCOL.length]);
+      const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: col, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+      h.position.set(x, z, -y); scene.add(h);
+      // (a little bigger the further away it is, so the distant ones still read as a soft light)
+      const size = 0.7 + Math.min(1.2, Math.hypot(x, y) * 0.045);
+      return { h, size, ph: Math.random() * 30, sp: 0.25 + Math.random() * 0.35 };
+    });
     this.W = W;
   }
   // is this point over the water (a little inside the wavy shore)?
@@ -133,8 +144,9 @@ export class Pond {
     if (!this.ok) return; this.u.time.value = time; this.u.rain.value = rain; if (this.W.moonDir) this.u.moonDir.value.copy(this.W.moonDir).normalize();
     for (const L of this.lanterns) {
       const f = 0.85 + 0.1 * Math.sin(time * 2.3 + L.ph) + 0.05 * Math.sin(time * 7.1 + L.ph * 3);
-      L.halo.material.opacity = 0.45 * f; if (L.ref !== undefined) this.u.lant.value[L.ref].w = f;
+      L.halo.material.opacity = 0.85 * f; L.wide.material.opacity = 0.28 * f; if (L.ref !== undefined) this.u.lant.value[L.ref].w = f * 1.4;
     }
+    for (const g of this.glows) { const b = 0.5 + 0.5 * Math.sin(time * g.sp + g.ph); g.h.material.opacity = 0.45 + 0.5 * b * b; g.h.scale.setScalar(g.size * (0.85 + 0.3 * b)); }
     const pos = this.dust.geometry.attributes.position.array, col = this.dust.geometry.attributes.color.array;
     for (let i = 0; i < this.N; i++) {
       const m = this.mote[i], t = time * m.sp + m.ph;
