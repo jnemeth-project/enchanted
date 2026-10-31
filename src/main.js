@@ -146,7 +146,7 @@ async function init() {
   // the wise tree's shelves: the drawing stick and the fairy light jar
   stick = new DrawStick(W, sound, dirt); stick.air = airTrails = new AirTrails(scene); jar = new FairyJar(W, scene, sound, effects);
   // the pond: pebbles plop in, or skip across if thrown flat and fast
-  pond = new Pond(W); pebbles.pond = pond;
+  pond = new Pond(W, scene); pebbles.pond = pond;
   pebbles.onSkips = (n) => { if (time - (pebbles.skipSaid ?? -99) < 4 || n < 3) return; pebbles.skipSaid = time; say(n >= 4 ? `${n === 4 ? 'Four' : n === 5 ? 'Five' : 'Six'} skips!\nThe frogs can't believe it 🐸` : 'Three skips!\nThe frogs are impressed 🐸', { hold: 3 }); };
   // shooting stars, and a wish if you saw one
   shooting = new ShootingStars(scene);
