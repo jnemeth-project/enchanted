@@ -8,8 +8,8 @@ import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
 // bump this whenever the forest is re-exported, so headsets never keep showing an old saved copy
-export const FOREST_VERSION = 'trunks1';
-export const EYE = new THREE.Vector3(0, 0.9, 0); // sitting on the forest floor, not on a chair
+export const FOREST_VERSION = 'clear2';
+export const EYE = new THREE.Vector3(0, 0.82, 0); // sitting right on the forest floor (a real seated-on-the-ground eye height), not on a chair
 export const shaderMats = []; // every material with a `time` uniform
 
 const twinkleVS = `

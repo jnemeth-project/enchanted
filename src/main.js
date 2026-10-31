@@ -16,7 +16,7 @@ import { Guide } from './guide.js';
 import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { SkyGames } from './skygames.js';
-import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines, Playfield, StarJar, Butterflies } from './play.js';
+import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines, Playfield, Butterflies } from './play.js';
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { tweens, clamp, glowTexture } from './util.js';
@@ -42,7 +42,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
-renderer.xr.setFoveation(0); // full, sharp vision; "Soft edges" in the options blurs the edges for comfort
+renderer.xr.setFoveation(0.4); // a light touch at the very edges of the lenses (hardly visible) keeps the frame rate smooth; "Calm motion" softens them more
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -63,7 +63,7 @@ vignette.position.set(0, 0, -0.2); vignette.renderOrder = 999; vignette.frustumC
 const veil = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthTest: false, depthWrite: false, fog: false }));
 veil.position.set(0, 0, -0.15); veil.renderOrder = 1000; // only in the view for the moment it fades
 let MOTION = 1; // how lively the twirling and drifting is (Calm motion slows it)
-function setSoftEdges(on) { if (on) camera.add(vignette); else camera.remove(vignette); vignette.visible = on; vignette.material.uniforms.strength.value = on ? 0.92 : 0; renderer.xr.setFoveation(on ? 1 : 0); }
+function setSoftEdges(on) { if (on) camera.add(vignette); else camera.remove(vignette); vignette.visible = on; vignette.material.uniforms.strength.value = on ? 0.92 : 0; renderer.xr.setFoveation(on ? 1 : 0.4); }
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
 const sound = new Sound();
@@ -136,7 +136,6 @@ async function init() {
   dirt = new DirtDrawing(scene, W, sound, effects);
   mushThrow = new MushroomThrow(touch, W, sound, effects);
   playfield = new Playfield(W, touch, sound, effects); pebbles.field = mushThrow.field = playfield;
-  jar = new StarJar(W, sound, effects);
   flutter = new Butterflies(Guide, scene);
   // the magic mushroom pot only appears when the rain comes (it has nothing to do before then)
   potGroup = new THREE.Group(); scene.add(potGroup);
@@ -149,7 +148,7 @@ async function init() {
     ...crystals.list.map((c) => ({ at: c.c, r: c.r, hz: c.hz })),
     ...pebbles.list.filter((p) => p.state === 'rest').map((p) => ({ at: p.o.position, r: 0.06, hz: 247 })),
   ]);
-  outlines = new Outlines([...W.boops, ...W.crystals, ...W.pebbles, ...W.dandelions, ...W.puffs, W.jar]);
+  outlines = new Outlines([...W.boops, ...W.crystals, ...W.pebbles, ...W.dandelions, ...W.puffs]);
   applyAccess();
   menu.volume = options.volume; menu.muted = !!options.muted;
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
@@ -159,11 +158,11 @@ async function init() {
   input.addPicker((r) => menu.pick(r), { ui: true });
   input.addPicker((r) => (SKY(phase.mode) ? sky.pick(r) : null), { ui: true });
   input.addPicker((r) => flies.pick(r));
-  input.addPicker((r) => pebbles.pick(r));
-  input.addPicker((r) => crystals.pick(r));
+  input.addPicker((r) => pebbles.pick(r), { handsOnly: true });
+  input.addPicker((r) => crystals.pick(r), { handsOnly: true });
   input.addPicker((r) => (potShown ? seed.pick(r) : null));
   input.addPicker((r) => rain.pick(r));
-  input.addPicker((r) => touch.pick(r));
+  input.addPicker((r) => touch.pick(r), { handsOnly: true });
   phase.firstNight = state.collection.length === 0 && state.nights === 1;
   seed.multiGrow = phase.firstNight; // first night: every watering grows it, so you keep a bloom on night one
   seed.onPlace = (at) => {
@@ -534,11 +533,13 @@ function onShapeDone(name, k) {
 // every session ends with the rain for your mushroom, until it has fully grown
 function needsWater() { return seed.state.stage < 3 && (phase.firstNight || !seed.grewThisSession); }
 
-// The butterfly lifts the grown mushroom out of the pot and sets it on the moss beside you.
-const BESIDE_YOU = new THREE.Vector3(-0.35, 0, -0.32);
+// The butterfly lifts the grown mushroom out of the pot and sets it in your little garden, at the edge of your space
+// (to the sides, never under you or in the dirt in front of you); each new one gets its own spot.
+const GARDEN = [112, -118, 128, -132, 100, -146, 140, -106];
+function besideYou() { const n = seed.state.collection.length, a = THREE.MathUtils.degToRad(GARDEN[n % GARDEN.length]), r = 1.1 + 0.18 * Math.floor(n / GARDEN.length); return new THREE.Vector3(Math.sin(a) * r, 0, -Math.cos(a) * r); }
 function carryBloom() {
   if (seed.state.stage !== 3 || seed.held || seed.desktopHeld) return;
-  guide.carryMushroom(seed.stages[3], seed.bloomTop(), BESIDE_YOU, () => seed._place(seed.stages[3].position.clone()));
+  guide.carryMushroom(seed.stages[3], seed.bloomTop(), besideYou(), () => seed._place(seed.stages[3].position.clone()));
 }
 function scheduleCarry() { tweens.add(0.1, () => {}, { delay: 16, done: carryBloom }); }
 
@@ -568,7 +569,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, jar, flutter });
+  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -603,7 +604,7 @@ function step(dt) {
     if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); jar.update(dt, input, time); playfield.update(dt); flutter.update(dt, time); crystals.update(dt, input); dirt.update(dt, input);
+    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
     if (phase.name !== 'goodnight') session.t += dt;

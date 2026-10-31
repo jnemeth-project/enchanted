@@ -65,8 +65,9 @@ export class Input {
 
   // each picker returns { key, point, fire } for what the ray points at, or null
   // ui pickers can be reached by pointing a hand from afar; the others only by gaze, mouse or controller
-  addPicker(fn, { ui = false } = {}) { this.rayHandlers.push({ fn, ui }); }
-  pick(ray, uiOnly = false) { for (const h of this.rayHandlers) { if (uiOnly && !h.ui) continue; const c = h.fn(ray); if (c) return c; } return null; }
+  addPicker(fn, { ui = false, handsOnly = false } = {}) { this.rayHandlers.push({ fn, ui, handsOnly }); }
+  // eyes = true: looking never chooses things meant for your hands, so those pickers (and their raycasts) are skipped
+  pick(ray, uiOnly = false, eyes = false) { for (const h of this.rayHandlers) { if (uiOnly && !h.ui) continue; if (eyes && h.handsOnly) continue; const c = h.fn(ray); if (c) return c; } return null; }
   emitRay(ray, uiOnly = false) { const c = this.pick(ray, uiOnly); if (c) { c.fire(); return true; } return false; }
   setBeam(i, on) { this.beam[i] = on; }
 

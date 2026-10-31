@@ -91,11 +91,10 @@ export class Pebbles {
     // pick up: pinch near a resting pebble, or point at one and pinch: it flies up into your hand
     input.hands.forEach((h, i) => {
       if (!h.present) return;
-      const aim = input.aim && input.aim[i];
       if (h.pinching && !h._pebbleWas && !h._holding) {
-        let best = null, bd = 0.08;
+        // only a deliberate pinch right on the pebble picks it up (no grabbing from a distance)
+        let best = null, bd = 0.045;
         for (const pb of this.list) { if (pb.state !== 'rest') continue; const d = pb.o.position.distanceTo(h.pinchPoint); if (d < bd) { bd = d; best = pb; } }
-        if (!best && aim) { let ad = 0.07; for (const pb of this.list) { if (pb.state !== 'rest') continue; const d = aim.ray.distanceToPoint(pb.o.position); if (d < ad && pb.o.position.distanceTo(aim.ray.origin) < 2.5) { ad = d; best = pb; } } if (best) best.fetch = 0; }
         if (best) { best.state = 'held'; best.hand = h; best.trail = []; best.from = best.o.position.clone(); h._holding = best; this.sound.boop(best.o.position.clone(), 180); }
       }
       h._pebbleWas = h.pinching;
@@ -334,9 +333,8 @@ export class MushroomThrow {
       if (!h.present) return;
       if (h.pinching && !h._mushWas && !h._holding) {
         let best = null, bd = Infinity;
-        for (const m of this.list) { if (m.state !== 'rest') continue; const d = m.it.center.distanceTo(h.pinchPoint); if (d < m.it.radius + 0.03 && d < bd) { bd = d; best = m; } }
-        const aim = input.aim && input.aim[i];
-        if (!best && aim) for (const m of this.list) { if (m.state !== 'rest') continue; if (aim.ray.distanceToPoint(m.it.center) < m.it.radius * 0.9 && m.it.center.distanceTo(aim.ray.origin) < 2.5) { best = m; break; } }
+        // only a deliberate pinch on the cap itself picks a mushroom up (no grabbing from a distance)
+        for (const m of this.list) { if (m.state !== 'rest') continue; const d = m.it.center.distanceTo(h.pinchPoint); if (d < m.it.radius * 0.6 && d < bd) { bd = d; best = m; } }
         if (best) {
           best.state = 'held'; best.hand = h; best.trail = []; best.fetch = 0; best.from = best.o.position.clone();
           best.off = best.o.position.clone().sub(best.it.center); // hold it by its cap

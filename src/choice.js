@@ -16,7 +16,7 @@ function label(title, sub) {
 }
 
 // the lanterns float well out in front of you (not in your lap), and are drawn larger to match
-const DIST = 1.35, S = 1.85, Y = 0.84, SPREAD = THREE.MathUtils.degToRad(24), OFFSET = THREE.MathUtils.degToRad(-14); // a little to the left and below eye level: clear of the door and the sign
+const DIST = 1.35, S = 1.85, Y = 0.78, SPREAD = THREE.MathUtils.degToRad(24), OFFSET = THREE.MathUtils.degToRad(-14); // a little to the left and below eye level: clear of the door and the sign
 
 export class Choice {
   constructor(scene, sound, eyeRay = null) {

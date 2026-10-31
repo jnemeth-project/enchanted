@@ -74,7 +74,7 @@ export class Gaze {
       if (k.life <= 0 && !on) { this._endConfirm(); this.cool = 0.4; }
       return;
     }
-    let c = this.cool > 0 ? null : this.input.pick(ray);
+    let c = this.cool > 0 ? null : this.input.pick(ray, false, true);
     // things within arm's reach are for your hands: looking only chooses things further away
     // (except what is meant to be used by looking, like the fireflies in their game or the options panel)
     if (c && !c.gazeNear && c.point && c.point.distanceTo(o) < 1.2) c = null;

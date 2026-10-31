@@ -88,7 +88,8 @@ export class Touch {
         input.hands.forEach((h, hi) => {
           if (!h.present) { it.inside[hi] = false; return; }
           let inside = false;
-          const r = it.radius + 0.01;
+          // a fingertip has to really reach it (a little inside the glow); once touched, it lets go a bit further out
+          const r = it.kind === 'dandelion' || it.kind === 'fern' ? it.radius + 0.01 : it.radius * (it.inside[hi] ? 0.95 : 0.7);
           for (let k = 0; k < 5 && !inside; k++) if (h.tips[k].distanceTo(it.center) < r) inside = true;
           if (!inside && it.kind === 'fern' && h.palm.distanceTo(it.center) < r) inside = true;
           if (!inside && it.kind === 'dandelion' && h.palm.distanceTo(it.center) < 0.22 && h.palmVel.length() > 0.5) inside = true; // a swoosh
@@ -126,6 +127,8 @@ export class Touch {
   // and nothing (ground, moss, trees) is in front of it. Anywhere else stays silent.
   pick(ray) {
     const dir = ray.direction.clone().normalize();
+    // cheap first: does the ray pass anywhere near something touchable? (raycasting the whole forest is slow)
+    if (!this.items.some((it) => !it.away && ray.distanceToPoint(it.center) < it.radius * 1.5 + 0.05)) return null;
     const rc = new THREE.Raycaster(ray.origin, dir, 0, 40);
     if (!this.blockers) {
       const B = this.W.byName;

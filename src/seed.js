@@ -138,7 +138,10 @@ export class Seed {
     const bloom = this.stages[3]; this.held = null;
     if (p.distanceTo(this.bloomHome) < 0.15) { bloom.position.copy(this.bloomHome); return; } // put back on the stump
     const down = new THREE.Raycaster(p.clone().add(new THREE.Vector3(0, 1.5, 0)), new THREE.Vector3(0, -1, 0), 0, 6);
-    const hit = down.intersectObjects(this.W.grounds, true)[0];
+    // never right where you sit (or in the dirt in front of you): it is nudged out to the edge of your space
+    const flat = Math.hypot(p.x, p.z);
+    if (flat < 0.8) { const k = (flat > 0.05 ? 0.92 / flat : 1); p.x = flat > 0.05 ? p.x * k : 0.9; p.z = flat > 0.05 ? p.z * k : 0.55; }
+    down.set(p.clone().add(new THREE.Vector3(0, 1.5, 0)), new THREE.Vector3(0, -1, 0)); const hit = down.intersectObjects(this.W.grounds, true)[0];
     if (hit) p.y = hit.point.y - 0.02;
     const entry = { color: this.state.color, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), ry: Math.random() * 6.28 };
     this.state.collection.push(entry);
@@ -153,6 +156,14 @@ export class Seed {
 
   _spawnCollected(c, animate = false) {
     const bloom = this.stages[3]; if (!bloom) return;
+    // mushrooms grown in earlier nights that were set down too close (under you, or in the dirt in front): move them out
+    const flat = Math.hypot(c.x, c.z);
+    if (flat < 0.8) {
+      const k = flat > 0.05 ? 0.92 / flat : 1; c.x = flat > 0.05 ? +(c.x * k).toFixed(3) : 0.9; c.z = flat > 0.05 ? +(c.z * k).toFixed(3) : 0.55;
+      const rc = new THREE.Raycaster(new THREE.Vector3(c.x, 1.5, c.z), new THREE.Vector3(0, -1, 0), 0, 6); const h = rc.intersectObjects(this.W.grounds, true)[0];
+      if (h) c.y = +(h.point.y - 0.02).toFixed(3);
+      if (!this.demo) saveState(this.state);
+    }
     const o = bloom.clone(true); const mats = [];
     o.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); mats.push(m.material); } });
     const col = this.colorOf(c.color); this._tint(mats, col);
