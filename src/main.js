@@ -181,7 +181,7 @@ async function init() {
   sky.onShapeStart = (n) => { if (phase.shapesSeen++ > 0) say(`A new picture\n${n} stars this time`, { hold: 3 }); };
   sky.onIdle = () => { if (!JUST_SIT) say(phase.mode === 'count' ? 'Look at the star inside the ring\nand hold your gaze until it fills' : 'Look at the star inside the ring\nto draw the next line', { hold: 4 }); };
   sky.onShapeDone = onShapeDone;
-  choice.onPick = startMode;
+  choice.onPick = (k) => (k === 'bed' ? goToBed() : k === 'snooze' ? snooze() : startMode(k));
   ui.status.textContent = newNight ? `Night ${state.nights}` : `Night ${state.nights}, again`;
   const xrOK = navigator.xr && await navigator.xr.isSessionSupported('immersive-vr').catch(() => false);
   ui.vr.disabled = !xrOK; ui.vr.textContent = xrOK ? 'Enter the forest' : 'Headset not found';
@@ -466,14 +466,49 @@ function goodnight() {
   // the butterfly says goodbye: it bows in front of you, then drifts up toward the moon with a trail of light
   const sky = EYE.clone().addScaledVector(W.moonDir || new THREE.Vector3(0, 0.9, -0.4), 22);
   const front = SKY(phase.mode) ? ahead(0.5, 0) : new THREE.Vector3(0.05, 0.82, -0.42);
-  tweens.add(0.1, () => {}, { delay: 2, done: () => guide.farewell(front, sky, nightComplete) });
+  phase.nightDone = false;
+  tweens.add(0.1, () => {}, { delay: 2, done: () => { if (guide.group.visible) guide.farewell(front, sky, nightComplete); else nightComplete(); } });
+  tweens.add(0.1, () => {}, { delay: 18, done: () => { if (phase.name === 'goodnight') nightComplete(); } }); // never wait forever for the butterfly
 }
 
 // After the butterfly has gone, say clearly that the night is over.
+// ...then a gentle choice: time for bed, or (up to twice a night) five more minutes
+const MAX_SNOOZES = 2;
 function nightComplete() {
+  if (phase.nightDone) return; phase.nightDone = true;
   say('Goodnight', { width: 1.0, hold: 3 });
-  tweens.add(0.1, () => {}, { delay: 14, done: () => say('The little door in the tree\ntakes you back to the main menu', { hold: 4.5 }) });
-  tweens.add(0.1, () => {}, { delay: 6, done: () => say('Come back tomorrow night\nto see what grows', { hold: 4.5 }) });
+  tweens.add(0.1, () => {}, { delay: 5.5, done: () => {
+    if (phase.name !== 'goodnight') return;
+    const left = MAX_SNOOZES - (session.snoozes || 0);
+    say(left > 0 ? 'Time for bed?' : 'Come back tomorrow night\nto see what grows', { hold: 3.2 });
+    const opts = [{ key: 'bed', title: 'Time for bed', sub: 'end the night\nand rest well', color: 0xbfd2ff }];
+    if (left > 0) opts.push({ key: 'snooze', title: '5 more minutes', sub: left === 1 ? 'one last little while' : 'stay a little longer', color: 0xffd9a8 });
+    tweens.add(0.1, () => {}, { delay: 1.6, done: () => { if (phase.name === 'goodnight') choice.show(opts); } });
+  } });
+}
+
+// Time for bed: a last soft goodnight, the forest fades to dark, and the headset leaves the forest
+function goToBed() {
+  say('Sleep well', { width: 1.0, hold: 2.4 });
+  camera.add(veil); veil.visible = true; veil.material.opacity = 0;
+  tweens.add(3, (k) => { veil.material.opacity = k; sound.setVolume(Math.max(0, (options.muted ? 0 : options.volume) * (1 - k))); }, { delay: 1.5, done: () => {
+    const s = renderer.xr.getSession && renderer.xr.getSession();
+    const go = () => { location.href = location.pathname + (DEBUG ? '?debug=1' : ''); };
+    if (s) s.end().then(go, go); else go();
+  } });
+}
+
+// Five more minutes: the forest wakes softly, the butterfly comes back, and you choose again
+function snooze() {
+  session.snoozes = (session.snoozes || 0) + 1;
+  session.len = session.t + 300; session.warned = false;
+  phase.mode = null; phase.wrapping = false;
+  sleep.wakeAll(4); touch.dimBoops(1); sound.setAwake(1);
+  if (W.canopy && W.canopy.uniform.value > 0.01) { const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); sky.stop(); }
+  for (const c of seed.collection) for (const m of c.mats) if (m.userData.baseEmissive !== undefined) m.emissiveIntensity = m.userData.baseEmissive;
+  guide.appear(sleep.homeOf(sleep.order[0])); guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 });
+  say(session.snoozes >= MAX_SNOOZES ? 'Five more minutes\n(the last little while tonight)' : 'Five more minutes', { hold: 2.6 });
+  phase.name = 'snoozing'; tweens.add(0.1, () => {}, { delay: 3.2, done: () => { phase.name = 'idle'; askChoice(); } });
 }
 
 // the forest falls asleep bit by bit as the stars are counted, or the pictures made
