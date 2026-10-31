@@ -560,7 +560,7 @@ const v3 = (s, d) => (s ? new THREE.Vector3(...String(s).split(',').map(Number))
 // A closed hand: the four fingertips curled in near the palm (with a little hysteresis, so it never flickers)
 export function gripping(h) {
   if (!h || !h.present || !h.tips || !h.palm) return false;
-  let d = 0; for (let k = 1; k < 5; k++) d += h.tips[k].distanceTo(h.palm); d /= 4;
+  let d = 0; for (let k = 1; k < 5; k++) { if (!h.tips[k]) return false; d += h.tips[k].distanceTo(h.palm); } d /= 4;
   if (!h._grip && d < 0.07) h._grip = true; else if (h._grip && d > 0.088) h._grip = false;
   return !!h._grip;
 }

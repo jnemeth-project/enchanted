@@ -387,7 +387,8 @@ function greet() {
   if (eggs) eggs.lateWelcome();
   tweens.add(0.1, () => {}, { delay: 3.4, done: restGuide });
 }
-function restGuide() { if (things && things.boardC) guide.goTo(things.boardC.clone().add(new THREE.Vector3(0.2, 0.14, -0.08)), { orbit: 0.03, speed: 0.5 }); }
+// the butterfly rests close by, a little in front and to the left at chest height, where you can reach out and boop it
+function restGuide() { guide.goTo(new THREE.Vector3(-0.3, 0.7, -0.42), { orbit: 0.03, speed: 0.5 }); }
 
 // From the menu: start a game (stopping whatever was going on), or stop it and go back to just sitting
 function playGame(mode, opts = {}) {

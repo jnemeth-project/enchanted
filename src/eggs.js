@@ -29,7 +29,7 @@ export class Eggs {
     const calm = ['hover', 'perch', 'rest', 'twirl'].includes(g.mode); if (!calm) return;
     input.hands.forEach((h, i) => {
       let inside = false;
-      if (h.present) for (let k = 1; k < 5 && !inside; k++) if (h.tips[k] && h.tips[k].distanceTo(g.pos) < 0.065) inside = true;
+      if (h.present) for (let k = 1; k < 5 && !inside; k++) if (h.tips[k] && h.tips[k].distanceTo(g.pos) < 0.09) inside = true;
       if (inside && !this.inBfly[i]) this._boop();
       this.inBfly[i] = inside;
     });

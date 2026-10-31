@@ -15,13 +15,18 @@ export class SleepyMushrooms {
     this.scene = scene; this.sound = sound; this.effects = effects;
     this.srcs = ['Boop_0', 'Boop_1', 'Boop_2', 'Boop_3', 'Boop_4'].map((n) => W.byName[n]).filter(Boolean);
     this.grounds = [W.byName.Ground].filter(Boolean); this.ray = new THREE.Raycaster();
+    // the mossy mound they grow on (made in Blender): hidden until the game starts, then it rises out of the
+    // moss with the mushrooms on top, at a height your hands can reach
+    this.root = new THREE.Group(); this.root.visible = false; scene.add(this.root);
+    this.mound = W.byName.G_SleepyMound || null;
+    if (this.mound) { this.root.attach(this.mound); this.mound.updateMatrixWorld(true); }
     this.list = []; this.active = false; this.seq = []; this.phase = 'idle'; this.t = 0; this.i = 0; this.rounds = 0; this.wrong = 0;
     this.onFirst = null; this.onRound = null;
   }
 
   _groundAt(x, z) {
     this.ray.set(new THREE.Vector3(x, 2, z), new THREE.Vector3(0, -1, 0));
-    const h = this.ray.intersectObjects(this.grounds, true)[0]; return h ? h.point.y : 0;
+    const h = this.ray.intersectObjects(this.mound ? [this.mound] : this.grounds, true)[0] || this.ray.intersectObjects(this.grounds, true)[0]; return h ? h.point.y : 0;
   }
 
   _make(k) {
@@ -49,23 +54,29 @@ export class SleepyMushrooms {
   start() {
     this.stop(true);
     this.active = true; this.rounds = 0; this.seq = []; this.wrong = 0;
+    this.root.position.y = 0; this.root.updateMatrixWorld(true); this.root.visible = true;
+    // the mound rises gently out of the moss (it starts below the ground), then the mushrooms pop up on it
+    if (this.mound) { const r = this.root; tweens.add(1.4, (e) => { r.position.y = -0.3 * (1 - e) * (1 - e); }); }
     for (let k = 0; k < 12; k++) {
-      const mu = this._make(k); mu.g.scale.setScalar(0.001); this.scene.add(mu.g); this.list.push(mu);
+      const mu = this._make(k); mu.g.scale.setScalar(0.001); this.root.add(mu.g); this.list.push(mu);
       // they pop up out of the moss one after another
-      tweens.add(0.6, (e) => { const b = e < 0.7 ? e / 0.7 * 1.12 : 1.12 - (e - 0.7) / 0.3 * 0.12; mu.g.scale.setScalar(Math.max(0.001, b)); }, { delay: 0.12 * k });
+      tweens.add(0.6, (e) => { const b = e < 0.7 ? e / 0.7 * 1.12 : 1.12 - (e - 0.7) / 0.3 * 0.12; mu.g.scale.setScalar(Math.max(0.001, b)); }, { delay: 1.0 + 0.12 * k });
     }
     this.seq = [this._pick(), this._pick()];
-    this._show(2.6);
+    this._show(3.6);
   }
 
   stop(now = false) {
     this.active = false; this.phase = 'idle';
     const old = this.list; this.list = [];
     old.forEach((mu, k) => {
-      if (now) { this.scene.remove(mu.g); return; }
+      if (now) { this.root.remove(mu.g); return; }
       const s0 = mu.g.scale.x;
-      tweens.add(0.5, (e) => mu.g.scale.setScalar(Math.max(0.001, s0 * (1 - e))), { delay: 0.05 * k, done: () => this.scene.remove(mu.g) });
+      tweens.add(0.5, (e) => mu.g.scale.setScalar(Math.max(0.001, s0 * (1 - e))), { delay: 0.05 * k, done: () => this.root.remove(mu.g) });
     });
+    // and the mound sinks back into the moss
+    if (now) { this.root.visible = false; }
+    else if (old.length) { const r = this.root; tweens.add(1.2, (e) => { r.position.y = -0.3 * e * e; }, { delay: 0.7, done: () => { if (!this.active) r.visible = false; } }); }
   }
 
   _pick() {

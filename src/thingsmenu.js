@@ -159,7 +159,8 @@ export class ThingsMenu {
   }
   _boardHit(ray) {
     if (!this.board) return null;
-    const d = ray.distanceToPoint(this.boardC); if (d > this.boardR * 1.1) return null;
+    // (a generous target: anywhere on or around the little board counts, so a look from your seat opens it)
+    const d = ray.distanceToPoint(this.boardC); if (d > Math.max(0.24, this.boardR * 1.8)) return null;
     const t = this.boardC.clone().sub(ray.origin).dot(ray.direction); return t > 0 ? this.boardC.clone() : null;
   }
   pick(ray) {
@@ -169,7 +170,7 @@ export class ThingsMenu {
       : { key: 'things:' + c.key, size: 0.06, dwell: 0.9, gazeNear: true, point: c.point, fire: () => this._press(c.key) };
     if (c) return null;
     const b = !this.open && this._boardHit(ray);
-    if (b) return { key: 'things:board', size: 0.14, dwell: 1.2, gazeNear: true, point: b, fire: () => this.show(this.eye) };
+    if (b) return { key: 'things:board', size: 0.14, dwell: 1.0, gazeNear: true, point: b, fire: () => this.show(this.eye) };
     return null;
   }
 
