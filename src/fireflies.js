@@ -8,7 +8,7 @@ import { glowTexture, rand, clamp } from './util.js';
 const HIDDEN = new THREE.Color(1.0, 0.9, 0.62);    // plain firefly glow: pale gold, so every colour stands out from it
 const CORE = new THREE.Color(1.0, 0.98, 0.8);
 // the firefly model's lantern and wing hinge, from Blender's axes (x, y, z) into the game's (x, z, -y)
-const LANTERN = new THREE.Vector3(0, -0.0005, 0.0215), WING_HINGE = new THREE.Vector3(0.003, 0.008, 0.005), BUTT = new THREE.Vector3(0, 0.0005, 0.034);
+const LANTERN = new THREE.Vector3(0, -0.0045, 0.0135), WING_HINGE = new THREE.Vector3(0.004, 0.0135, 0), BUTT = new THREE.Vector3(0, -0.0045, 0.0265);
 const VIEW = new THREE.Vector3(0, 0.82, 0); // where your eyes are: the fireflies face you
 // six strong colours that are easy to tell apart at night. Each also has its own shape and its own note,
 // so a pair can be matched by colour, by shape or by sound (colour blind players included).
@@ -193,8 +193,9 @@ export class Fireflies {
         f.model.rotateX(0.12 + Math.sin(time * 1.1 + f.ph) * 0.05); f.model.rotateZ(Math.sin(time * 0.9 + f.ph * 2) * 0.1);
         // wings: a quick buzz while flying, a softer flutter while it hovers in line
         const fast = f.state === 'fly' || f.state === 'out';
-        const flap = fast ? 0.75 + 0.55 * Math.sin(time * 40 + f.ph) : 0.85 + 0.3 * Math.sin(time * 14 + f.ph * 3); // raised in a soft V, so you see them from the front
-        for (const { w, side } of f.wings) { w.rotation.z = side * flap; w.rotation.y = -side * 0.2; }
+        // (the wings stand up behind the head facing you, and flutter by sweeping back and forth)
+        const flap = fast ? 0.45 + 0.45 * Math.sin(time * 40 + f.ph) : 0.3 + 0.22 * Math.sin(time * 12 + f.ph * 3);
+        for (const { w, side } of f.wings) { w.rotation.z = 0; w.rotation.y = -side * (0.26 + flap); }
         // the glow sits on its bottom, wherever that is turned
         f.halo.position.copy(LANTERN).multiplyScalar(ms).applyQuaternion(f.model.quaternion); f.core.position.copy(f.halo.position);
         f.icon.position.copy(BUTT).multiplyScalar(ms).applyQuaternion(f.model.quaternion);
