@@ -197,6 +197,39 @@ export class Sound {
     n.connect(lp); lp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.2);
   }
 
+  // A pebble dropping into the pond: a round, rising "bloop" and a soft little splash
+  plop(pos, strength = 1) {
+    if (!this.enabled) return;
+    const k = Math.max(0.4, Math.min(1, strength)), ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    const f0 = 240 + Math.random() * 60; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 2.6, t + 0.09);
+    const og = ctx.createGain(); this._env(og, t, 0.004, 0.55 * k, 0.12); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.2);
+    const n = this._src(this.brown || this.white); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 0.8;
+    const g = ctx.createGain(); this._env(g, t + 0.02, 0.005, 0.35 * k, 0.22);
+    n.connect(bp); bp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.35);
+  }
+
+  // A pebble skipping off the water: a tiny bright "plip"
+  plip(pos) {
+    if (!this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    const f0 = 620 + Math.random() * 120; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 2.1, t + 0.05);
+    const og = ctx.createGain(); this._env(og, t, 0.002, 0.35, 0.06); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.12);
+  }
+
+  // Knuckles on the white tree: a hollow wooden knock
+  knock(pos) {
+    if (!this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
+    const o = ctx.createOscillator(); o.type = 'triangle';
+    const f0 = 190 + Math.random() * 25; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.7, t + 0.07);
+    const og = ctx.createGain(); this._env(og, t, 0.001, 0.9, 0.09); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.15);
+    const n = this._src(this.brown || this.white); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 2;
+    const g = ctx.createGain(); this._env(g, t, 0.001, 0.6, 0.04);
+    n.connect(bp); bp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.08);
+  }
+
   // Breathy whoosh for dandelion seeds lifting away.
   whoosh(pos) {
     if (!this.enabled) return;

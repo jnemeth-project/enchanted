@@ -70,7 +70,7 @@ export class Pebbles {
   }
 
   _throw(pb, v) {
-    pb.state = 'fly'; pb.t = 0; pb.v.copy(v); pb.hand = null;
+    pb.state = 'fly'; pb.t = 0; pb.v.copy(v); pb.hand = null; pb.skips = 0; pb.told = false;
     pb.spin.set(Math.random() * 10 - 5, Math.random() * 10 - 5, Math.random() * 10 - 5);
     this.sound.whoosh(pb.o.position.clone());
   }
@@ -121,6 +121,22 @@ export class Pebbles {
         o.position.addScaledVector(pb.v, dt);
         if (this.field) this.field.collide(o.position, pb.v, 0.05, pb);
         o.rotation.x += pb.spin.x * dt; o.rotation.y += pb.spin.y * dt; o.rotation.z += pb.spin.z * dt;
+        // the pond: a flat, fast throw skips off the water; anything else drops in with a plop
+        const P = this.pond;
+        if (P && P.inside(o.position) && o.position.y <= P.y + 0.012 && pb.v.y < 0) {
+          const hs = Math.hypot(pb.v.x, pb.v.z), vy = -pb.v.y;
+          o.position.y = P.y + 0.012;
+          if (hs > (pb.skips ? 1.5 : 3) && vy < hs * 1.1 && pb.skips < 6) {
+            pb.skips++; pb.v.y = Math.min(0.7, Math.max(0.4, vy * 0.25)); pb.v.x *= 0.7; pb.v.z *= 0.7;
+            P.ripple(o.position, 0.6); this.sound.plip(o.position.clone());
+            if (this.effects) this.effects.sparkle(o.position.clone(), 0xa8ffe4, 6, 0.05);
+          } else {
+            P.ripple(o.position, 1); this.sound.plop(o.position.clone(), vy / 5);
+            if (this.effects) this.effects.sparkle(o.position.clone(), 0xa8ffe4, 14, 0.09);
+            pb.state = 'sink'; pb.t = 0; pb.v.set(0, 0, 0);
+          }
+          continue;
+        }
         const gy = this._groundY(o.position) + 0.015;
         if (o.position.y <= gy) {
           o.position.y = gy;
@@ -132,6 +148,14 @@ export class Pebbles {
           } else { if (impact > 0.3) this.sound.thump(o.position.clone(), 0.25); pb.state = 'land'; pb.t = 0; pb.v.set(0, 0, 0); }
         }
         if (pb.t > 12 || o.position.length() > 70) { pb.state = 'land'; pb.t = 0; }
+      }
+      // once it has come to rest, a really good skip gets its applause
+      if (pb.state !== 'fly' && pb.skips >= 3 && !pb.told) { pb.told = true; if (this.onSkips) this.onSkips(pb.skips); }
+      if (pb.state === 'fly' || pb.state === 'held') {
+      } else if (pb.state === 'sink') {
+        // it slips softly under the water, then comes home to its shelf
+        o.position.y -= dt * 0.12; o.scale.copy(pb.homeS).multiplyScalar(Math.max(0.001, 1 - pb.t / 1.2));
+        if (pb.t > 1.2) { pb.state = 'home'; pb.t = 0.4; pb.moved = false; }
       } else if (pb.state === 'land') {
         // after a moment, it sparkles away and reappears back where it was
         if (pb.t > 3.5) { if (this.effects) this.effects.sparkle(o.position.clone(), 0xd9f6ff, 16, 0.1); pb.state = 'home'; pb.t = 0; }
@@ -573,7 +597,12 @@ export class ShelfLights {
       return { sp, ph: i * 1.7 };
     });
   }
-  update(time) { for (const b of this.list) b.sp.material.opacity = 0.42 + 0.18 * Math.sin(time * 1.6 + b.ph) * Math.sin(time * 0.7 + b.ph * 0.3); }
+  update(time) {
+    // (boost: a warm glow-up for a moment, when somebody turns out to be home after all)
+    const dt = Math.min(0.1, time - (this.lastT ?? time)); this.lastT = time; this.boost = Math.max(0, (this.boost || 0) - dt * 0.9);
+    const k = 1 + Math.min(1.2, this.boost);
+    for (const b of this.list) { b.sp.material.opacity = Math.min(1, (0.42 + 0.18 * Math.sin(time * 1.6 + b.ph) * Math.sin(time * 0.7 + b.ph * 0.3)) * k); b.sp.scale.setScalar(0.045 * (1 + 0.6 * Math.min(1, this.boost))); }
+  }
 }
 
 // Pixie dust: the drawing stick's tip, held up in the air, sprinkles a trail of twinkling coloured dust.
@@ -592,6 +621,44 @@ function dustTexture() {
   const grd = g.createRadialGradient(16, 16, 0, 16, 16, 16); grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.3, 'rgba(255,255,255,0.6)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grd; g.fillRect(0, 0, 32, 32); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+// Recognising a heart drawn in the air: the stroke (seen from where you look at it) is resampled and
+// compared with a heart and with a circle, whichever way round and wherever it was started.
+const NP = 48;
+function resample(pts, n = NP) {
+  let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  const step = L / (n - 1), out = [pts[0].slice()]; let acc = 0, prev = pts[0].slice();
+  for (let i = 1; i < pts.length; i++) {
+    let cur = pts[i], d = Math.hypot(cur[0] - prev[0], cur[1] - prev[1]);
+    while (acc + d >= step && out.length < n) { const t = (step - acc) / d; const q = [prev[0] + t * (cur[0] - prev[0]), prev[1] + t * (cur[1] - prev[1])]; out.push(q); prev = q; d = Math.hypot(cur[0] - prev[0], cur[1] - prev[1]); acc = 0; }
+    acc += d; prev = cur;
+  }
+  while (out.length < n) out.push(pts[pts.length - 1].slice());
+  return out;
+}
+function norm(pts) {
+  let cx = 0, cy = 0; pts.forEach((p) => { cx += p[0]; cy += p[1]; }); cx /= pts.length; cy /= pts.length;
+  let mx = 1e-6; pts.forEach((p) => { mx = Math.max(mx, Math.abs(p[0] - cx), Math.abs(p[1] - cy)); });
+  return pts.map((p) => [(p[0] - cx) / mx, (p[1] - cy) / mx]);
+}
+function closedTemplate(f) { const p = []; for (let i = 0; i <= 200; i++) p.push(f(i / 200 * Math.PI * 2)); return norm(resample(p)); }
+const HEART = closedTemplate((t) => [16 * Math.sin(t) ** 3, 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)]);
+const CIRCLE = closedTemplate((t) => [Math.sin(t), Math.cos(t)]);
+function score(c, T) {
+  let best = 9;
+  for (const dirn of [1, -1]) for (let s = 0; s < NP; s += 2) {
+    let d = 0; for (let i = 0; i < NP; i++) { const j = ((dirn > 0 ? i : NP - 1 - i) + s) % NP; d += Math.hypot(c[i][0] - T[j][0], c[i][1] - T[j][1]); }
+    best = Math.min(best, d / NP);
+  }
+  return best;
+}
+function isHeart(pts2) {
+  if (pts2.length < 12) return { ok: false };
+  const raw = norm(resample(pts2)), size = 1;
+  const gap = Math.hypot(raw[0][0] - raw[NP - 1][0], raw[0][1] - raw[NP - 1][1]);
+  const h = score(raw, HEART), c = score(raw, CIRCLE);
+  return { ok: gap < 0.6 && h < 0.2 && h < c * 0.8, h, c, gap };
+}
+
 const DUST_COLOURS = [0xffbe3c, 0xff5fa8, 0x9a6bff, 0x34f0b0, 0x4ab8ff].map((c) => new THREE.Color(c));
 
 export class AirTrails {
@@ -599,7 +666,7 @@ export class AirTrails {
     this.LIFE = 14;
     const layer = (N, tex, size) => {
       const L = { N, i: 0, pos: new Float32Array(N * 3).fill(-999), col: new Float32Array(N * 3), age: new Float32Array(N).fill(99),
-        base: new Float32Array(N * 3), tw: new Float32Array(N), fall: new Float32Array(N) };
+        base: new Float32Array(N * 3), tw: new Float32Array(N), fall: new Float32Array(N), rise: new Float32Array(N), mine: [] };
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(L.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(L.col, 3));
       L.pts = new THREE.Points(g, new THREE.PointsMaterial({ map: tex, size, sizeAttenuation: true, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -608,7 +675,7 @@ export class AirTrails {
     this.dust = layer(3000, dustTexture(), 0.0075);   // fine specks
     this.glow = layer(900, dustTexture(), 0.022);     // a soft coloured haze along the line
     this.glint = layer(300, glintTexture(), 0.03);    // the odd twinkling star
-    this.last = null; this.stroke = 0; this.along = 0; this.c = new THREE.Color(); this.t = 0;
+    this.last = null; this.stroke = 0; this.along = 0; this.c = new THREE.Color(); this.t = 0; this.path = [];
   }
   _colour() {
     // this stroke's colour, drifting slowly towards the next one in the palette along the line
@@ -616,7 +683,7 @@ export class AirTrails {
     return this.c.copy(DUST_COLOURS[a]).lerp(DUST_COLOURS[b], f - Math.floor(f));
   }
   _add(L, q, col, jit, k) {
-    const j = L.i++ % L.N;
+    const j = L.i++ % L.N; L.rise[j] = 0; L.mine.push(j);
     L.pos[j * 3] = q.x + (Math.random() - 0.5) * jit; L.pos[j * 3 + 1] = q.y + (Math.random() - 0.5) * jit; L.pos[j * 3 + 2] = q.z + (Math.random() - 0.5) * jit;
     L.base[j * 3] = col.r * k; L.base[j * 3 + 1] = col.g * k; L.base[j * 3 + 2] = col.b * k;
     L.age[j] = 0; L.tw[j] = Math.random() * 20; L.fall[j] = 0.004 + Math.random() * 0.01;
@@ -631,9 +698,29 @@ export class AirTrails {
       if (k % 2 === 0) this._add(this.glow, q, col, 0.004, 0.16);
       if (Math.random() < 0.05) this._add(this.glint, q, this.c.copy(col).lerp(new THREE.Color(1, 1, 1), 0.35), 0.016, 1);
     }
-    this.last.copy(p);
+    this.last.copy(p); this.path.push(p.clone());
   }
-  lift() { if (this.last) { this.stroke = (this.stroke + 1) % DUST_COLOURS.length; this.along = 0; } this.last = null; }
+  lift() {
+    if (this.last) { this._maybeHeart(); this.stroke = (this.stroke + 1) % DUST_COLOURS.length; this.along = 0; }
+    this.last = null; this.path = []; for (const L of [this.dust, this.glow, this.glint]) L.mine = [];
+  }
+  // a heart drawn in the air fills with rose-pink dust and floats slowly up into the sky
+  _maybeHeart() {
+    const P = this.path; if (P.length < 15 || !this.eye) return;
+    let len = 0; for (let i = 1; i < P.length; i++) len += P[i].distanceTo(P[i - 1]); if (len < 0.25) return;
+    const c = new THREE.Vector3(); P.forEach((p) => c.add(p)); c.divideScalar(P.length);
+    const fwd = c.clone().sub(this.eye()).normalize(), right = new THREE.Vector3(0, 1, 0).cross(fwd).normalize().negate(), up = fwd.clone().cross(right).negate();
+    const flat = P.map((p) => { const d = p.clone().sub(c); return [d.dot(right), d.dot(up)]; });
+    if (!isHeart(flat).ok) return;
+    const pink = new THREE.Color(0xff5fa8), soft = new THREE.Color(0xffb3d6);
+    for (const L of [this.dust, this.glow, this.glint]) {
+      const k = L === this.glow ? 0.18 : 0.95;
+      for (const j of L.mine) { const col = Math.random() < 0.3 ? soft : pink; L.base[j * 3] = col.r * k; L.base[j * 3 + 1] = col.g * k; L.base[j * 3 + 2] = col.b * k; L.age[j] = 0.5; L.rise[j] = 1; }
+    }
+    // fill it in: a few extra specks inside the heart's outline
+    for (let n = 0; n < 160; n++) { const a = P[Math.floor(Math.random() * P.length)], b = P[Math.floor(Math.random() * P.length)]; const q = a.clone().lerp(b, Math.random()).lerp(c, 0.3 * Math.random()); this._add(this.dust, q, pink, 0.008, 0.6); const j = (this.dust.i - 1) % this.dust.N; this.dust.rise[j] = 1; this.dust.age[j] = 0.5; }
+    if (this.onHeart) this.onHeart(c);
+  }
   update(dt) {
     this.t += dt;
     for (const [L, sparkle] of [[this.dust, 0.45], [this.glow, 0.1], [this.glint, 1]]) {
@@ -647,7 +734,8 @@ export class AirTrails {
         tw = sparkle === 1 ? Math.pow(tw, 6) : 1 - sparkle + sparkle * tw;
         const k = fade * tw;
         L.col[j * 3] = L.base[j * 3] * k; L.col[j * 3 + 1] = L.base[j * 3 + 1] * k; L.col[j * 3 + 2] = L.base[j * 3 + 2] * k;
-        if (a > 2) { L.pos[j * 3 + 1] -= L.fall[j] * dt; moved = true; }   // drifting gently down as it settles
+        if (L.rise[j]) { L.pos[j * 3 + 1] += dt * (0.05 + 0.03 * a); L.pos[j * 3] += Math.sin(this.t * 0.8 + j) * 0.0006; moved = true; }   // a heart floats up
+        else if (a > 2) { L.pos[j * 3 + 1] -= L.fall[j] * dt; moved = true; }   // drifting gently down as it settles
         if (a > this.LIFE) { L.pos[j * 3 + 1] = -999; moved = true; }
       }
       if (any) L.pts.geometry.attributes.color.needsUpdate = true;

@@ -21,6 +21,9 @@ import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { ThingsMenu } from './thingsmenu.js';
 import { SleepyMushrooms } from './sleepy.js';
+import { Pond } from './pond.js';
+import { ShootingStars } from './wishes.js';
+import { Eggs } from './eggs.js';
 import { tweens, clamp, glowTexture } from './util.js';
 import { loadState, beginNight, saveState, wateredTonight, nightKey } from './save.js';
 
@@ -87,7 +90,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails, pond, shooting, eggs;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
   options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
@@ -142,12 +145,33 @@ async function init() {
   flutter = new Butterflies(Guide, scene);
   // the wise tree's shelves: the drawing stick and the fairy light jar
   stick = new DrawStick(W, sound, dirt); stick.air = airTrails = new AirTrails(scene); jar = new FairyJar(W, scene, sound, effects);
+  // the pond: pebbles plop in, or skip across if thrown flat and fast
+  pond = new Pond(W); pebbles.pond = pond;
+  pebbles.onSkips = (n) => { if (time - (pebbles.skipSaid ?? -99) < 4 || n < 3) return; pebbles.skipSaid = time; say(n >= 4 ? `${n === 4 ? 'Four' : n === 5 ? 'Five' : 'Six'} skips!\nThe frogs can't believe it 🐸` : 'Three skips!\nThe frogs are impressed 🐸', { hold: 3 }); };
+  // shooting stars, and a wish if you saw one
+  shooting = new ShootingStars(scene);
+  shooting.onWish = () => {
+    effects.sparkle(ahead(0.9, 0.05), 0xffe2a0, 26, 0.12); sound.chime(ahead(0.9, 0.05), 880);
+    if (!shooting.told) { shooting.told = true; say('Make a wish ✨', { hold: 2.6 }); }
+  };
+  // a heart drawn in the air with the stick floats up into the sky
+  airTrails.eye = eyePos;
+  airTrails.onHeart = (c) => { effects.sparkle(c.clone(), 0xff8cc6, 30, 0.14); sound.chime(c.clone(), 698.46); };
+  stick.onThrow = (at) => {
+    if (time - (stick.toldAt ?? -99) < 20) return; stick.toldAt = time;
+    effects.sparkle(at, 0xffe2b0, 12, 0.08);
+    say('Sticks are for drawing,\nnot for fetching 🐾', { hold: 3.2 });
+  };
+  eggs = new Eggs({ W, guide, sound, effects, say, touch, shelfLights,
+    eye: eyePos, look: () => eyeRay().direction.clone(),
+    resumeGuide: () => { if (phase.name === 'relax' && !phase.mode) restGuide(); else guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 }); } });
+  if (options.voice) eggs.startVoice(sound.ctx);
   // a little surprise for anyone who tries to throw the jar away
   jar.onThrow = (at) => {
     if (time - (jar.toldAt ?? -99) < 20) return; jar.toldAt = time;
     effects.sparkle(at, 0xffe2b0, 14, 0.08);
     say('No littering\nin the enchanted forest 🙂', { hold: 3.2 });
-  }; shelfLights = new ShelfLights(W, scene);
+  }; shelfLights = new ShelfLights(W, scene); eggs.shelfLights = shelfLights;
   // the magic mushroom pot only appears when the rain comes (it has nothing to do before then)
   potGroup = new THREE.Group(); scene.add(potGroup);
   for (const o of [W.magic.stump, W.byName.G_Shadow_SeedStump, W.magic.dust, ...(W.magic.stages || [])]) if (o) potGroup.attach(o);
@@ -216,6 +240,7 @@ function begin() {
   ui.overlay.classList.add('gone');
   sound.setVolume(options.muted ? 0 : options.volume);
   sound.start();
+  if (options.voice && eggs) eggs.startVoice(sound.ctx);
   phase.name = 'arrival'; phase.t = 0;
   session.t = 0; session.len = (options.session || 10) * 60;
   // a quiet arrival: no words at first, just the forest
@@ -224,7 +249,7 @@ function begin() {
 function readOptions() {
   const q = (id) => document.getElementById(id);
   if (q('opt-sit')) { options.sit = q('opt-sit').checked; options.bright = q('opt-bright').checked; options.calm = !!(q('opt-calm') && q('opt-calm').checked);
-    for (const k of ['large', 'speak', 'guides', 'outlines']) options[k] = !!(q('opt-' + k) && q('opt-' + k).checked); options.volume = +q('opt-volume').value; }
+    for (const k of ['large', 'speak', 'guides', 'outlines', 'voice']) options[k] = !!(q('opt-' + k) && q('opt-' + k).checked); options.volume = +q('opt-volume').value; }
   const sel = document.querySelector('#session button.on'); if (sel) options.session = +sel.dataset.min;
   try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {}
   JUST_SIT = options.sit;
@@ -234,7 +259,7 @@ function readOptions() {
   if (flies) flies.big = options.bright;
   if (touch) touch.highlight = options.bright ? 0.35 : 0;
 }
-for (const [id, key] of [['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-calm', 'calm'], ['opt-large', 'large'], ['opt-speak', 'speak'], ['opt-guides', 'guides'], ['opt-outlines', 'outlines']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
+for (const [id, key] of [['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-calm', 'calm'], ['opt-large', 'large'], ['opt-speak', 'speak'], ['opt-guides', 'guides'], ['opt-outlines', 'outlines'], ['opt-voice', 'voice']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
 { const v = document.getElementById('opt-volume'); if (v) v.value = options.volume; }
 // how long tonight's session lasts: 5, 10, 15 or 20 minutes (remembered)
 for (const b of document.querySelectorAll('#session button')) {
@@ -262,6 +287,8 @@ function eyesCentre(out) {
   if (xc.cameras && xc.cameras.length >= 2) { const a = new THREE.Vector3(), b = new THREE.Vector3(); xc.cameras[0].getWorldPosition(a); xc.cameras[1].getWorldPosition(b); return out.copy(a).add(b).multiplyScalar(0.5); }
   return xc.getWorldPosition(out);
 }
+// where your eyes are now (in the headset, or the screen camera)
+function eyePos() { const v = new THREE.Vector3(); return renderer.xr.isPresenting ? eyesCentre(v) : camera.getWorldPosition(v); }
 function headTracked() {
   const head = new THREE.Vector3(); eyesCentre(head);
   const y = head.y - rig.position.y;
@@ -357,6 +384,7 @@ function greet() {
   if (phase.name === 'relax') return;
   phase.name = 'relax'; phase.t = 0; phase.wrapping = false; state.tutorialDone = true; saveState(state);
   say(state.nights <= 1 ? 'Welcome\nStay as long as you like' : 'Welcome back', { hold: 3.6 });
+  if (eggs) eggs.lateWelcome();
   tweens.add(0.1, () => {}, { delay: 3.4, done: restGuide });
 }
 function restGuide() { if (things && things.boardC) guide.goTo(things.boardC.clone().add(new THREE.Vector3(0.2, 0.14, -0.08)), { orbit: 0.03, speed: 0.5 }); }
@@ -623,7 +651,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
+  window.__lo = () => ({ pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -683,7 +711,8 @@ function step(dt) {
     if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); jar.update(dt, input, time); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
+    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); pond.update(time); eggs.update(dt, input);
+    shooting.skyOpen = phase.mode === 'count' || phase.mode === 'shapes'; shooting.update(dt, eyePos(), eyeRay().direction); jar.update(dt, input, time); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
     things.update(dt, input, time, eyeRay());
