@@ -5,6 +5,7 @@
 //             let go mid-swing to throw it. It bounces, rolls to a stop, and a moment later sparkles
 //             back home so you can throw it again. (On screen: click a pebble to toss it.)
 import * as THREE from 'three';
+import { glowTexture } from './util.js';
 
 const G = 9.8;
 const tmp = new THREE.Vector3();
@@ -112,13 +113,14 @@ export class Pebbles {
           h._holding = null; pb.fetch = undefined;
           // let go: it flies off with your hand's speed (a little extra, for fun)
           const a = pb.trail[0], b = pb.trail[pb.trail.length - 1], time = pb.trail.slice(1).reduce((s, x) => s + x.dt, 0) || dt;
-          const v = b.p.clone().sub(a.p).divideScalar(time).multiplyScalar(2.6); // a good throw really flies
+          const v = b.p.clone().sub(a.p).divideScalar(time).multiplyScalar(3.6); // a good throw really flies
           if (v.length() < 0.6) { pb.state = 'fly'; pb.v.set(0, 0, 0); pb.t = 0; pb.hand = null; } // just dropped
           else this._throw(pb, v);
         }
       } else if (pb.state === 'fly') {
         pb.v.y -= G * dt;
         o.position.addScaledVector(pb.v, dt);
+        if (this.field) this.field.collide(o.position, pb.v, 0.05, pb);
         o.rotation.x += pb.spin.x * dt; o.rotation.y += pb.spin.y * dt; o.rotation.z += pb.spin.z * dt;
         const gy = this._groundY(o.position) + 0.015;
         if (o.position.y <= gy) {
@@ -354,12 +356,13 @@ export class MushroomThrow {
         if (!h.pinching) {
           h._holding = null;
           const a = m.trail[0], b = m.trail[m.trail.length - 1], time = m.trail.slice(1).reduce((s, x) => s + x.dt, 0) || dt;
-          m.v.copy(b.p).sub(a.p).divideScalar(time).multiplyScalar(2.2);
+          m.v.copy(b.p).sub(a.p).divideScalar(time).multiplyScalar(3.2);
           m.spin.set(Math.random() * 8 - 4, Math.random() * 8 - 4, Math.random() * 8 - 4);
           m.state = 'fly'; m.t = 0; if (m.v.length() > 0.6) this.sound.whoosh(o.position.clone());
         }
       } else if (m.state === 'fly') {
         m.v.y -= G * dt; o.position.addScaledVector(m.v, dt);
+        if (this.field) this.field.collide(o.position, m.v, 0.08, m);
         o.rotation.x += m.spin.x * dt; o.rotation.z += m.spin.z * dt;
         const gy = this._groundY(o.position);
         if (o.position.y <= gy) {
@@ -417,4 +420,169 @@ export class Outlines {
     });
   }
   set(on) { for (const l of this.lines) l.visible = on; }
+}
+
+
+// The playfield for thrown things: tree trunks to bounce off, and mushrooms to knock over (they grow back)
+export class Playfield {
+  constructor(W, touch, sound, effects) {
+    this.touch = touch; this.sound = sound; this.effects = effects;
+    // tree trunks as circles, measured in Blender (position and width at chest height); Blender's y is the game's -z
+    let list = [];
+    try { list = JSON.parse((W.byName.G_PlayerSeat && W.byName.G_PlayerSeat.userData.trunks) || '[]'); } catch {}
+    this.trunks = list.map(([x, y, r]) => ({ x, z: -y, r }));
+    // mushrooms out in the forest you can knock over
+    this.targets = W.knock.map((o) => {
+      const box = new THREE.Box3().setFromObject(o), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+      return { o, c, r: Math.max(size.x, size.z) * 0.5 + 0.05, h: size.y, base: o.position.clone(), q: o.quaternion.clone(), s: o.scale.clone(), state: 'up', t: 0, axis: new THREE.Vector3(), cool: 0 };
+    });
+  }
+
+  collide(p, vel, rad, who) {
+    // trunks: bounce off with a soft thud
+    for (const t of this.trunks) {
+      const dx = p.x - t.x, dz = p.z - t.z, d = Math.hypot(dx, dz), min = t.r + rad;
+      if (d < min && p.y < 9) {
+        const nx = dx / (d || 1), nz = dz / (d || 1), vn = vel.x * nx + vel.z * nz;
+        if (vn < 0) { vel.x -= 1.6 * vn * nx; vel.z -= 1.6 * vn * nz; vel.multiplyScalar(0.7); this.sound.boop(p.clone(), 72); if (this.effects) this.effects.sparkle(p.clone(), 0xd9f6ff, 10, 0.08); }
+        p.x = t.x + nx * min; p.z = t.z + nz * min;
+      }
+    }
+    // mushrooms out in the forest: knock them over
+    for (const k of this.targets) {
+      if (k.state !== 'up') continue;
+      const dx = p.x - k.c.x, dz = p.z - k.c.z;
+      if (Math.hypot(dx, dz) < k.r && p.y < k.base.y + k.h + 0.05) {
+        const dir = new THREE.Vector3(vel.x, 0, vel.z); if (dir.lengthSq() < 1e-4) dir.set(-dx, 0, -dz); dir.normalize();
+        k.axis.crossVectors(new THREE.Vector3(0, 1, 0), dir).normalize(); k.state = 'fall'; k.t = 0;
+        this.sound.boop(k.c.clone(), 98); if (this.effects) { this.effects.sparkle(k.c.clone(), 0xffe9ff, 30, 0.25); this.effects.spores(k.c.clone(), new THREE.Color(0.7, 1, 0.9), 18); }
+        vel.multiplyScalar(0.45);
+      }
+    }
+    // the musical mushrooms beside you just get a boop
+    if (this.touch) for (const it of this.touch.items) {
+      if (it.kind !== 'boop' || it.away || who && who.it === it) continue;
+      if (it.center.distanceTo(p) < it.radius + rad) { this.touch._fire(it, null); vel.multiplyScalar(0.6); }
+    }
+  }
+
+  update(dt) {
+    for (const k of this.targets) {
+      k.t += dt;
+      if (k.state === 'fall') {
+        const e = Math.min(1, k.t / 0.7), ang = 1.45 * (1 - Math.pow(1 - e, 3)) + (e >= 1 ? 0 : 0);
+        k.o.quaternion.copy(k.q).premultiply(new THREE.Quaternion().setFromAxisAngle(k.axis, ang));
+        if (e >= 1) { k.state = 'down'; k.t = 0; }
+      } else if (k.state === 'down' && k.t > 6) {
+        // it fades where it lies and grows back up where it was
+        const e = Math.min(1, (k.t - 6) / 0.6); k.o.scale.copy(k.s).multiplyScalar(Math.max(0.001, 1 - e));
+        if (e >= 1) { k.o.quaternion.copy(k.q); k.state = 'grow'; k.t = 0; }
+      } else if (k.state === 'grow') {
+        const e = Math.min(1, k.t / 1.6); k.o.scale.copy(k.s).multiplyScalar(Math.max(0.001, 1 - Math.pow(1 - e, 3)));
+        if (e >= 1) { k.state = 'up'; k.o.scale.copy(k.s); }
+      }
+    }
+  }
+}
+
+// A jar of stars: pick it up, tilt it and the little lights drift up inside; shake it and they swirl.
+// Let go and it floats gently back to where it sat.
+export class StarJar {
+  constructor(W, sound, effects) {
+    this.o = W.jar; this.sound = sound; this.effects = effects; if (!this.o) return;
+    this.home = this.o.position.clone(); this.homeQ = this.o.quaternion.clone();
+    this.held = null; this.offQ = new THREE.Quaternion(); this.prevPos = this.o.position.clone(); this.prevVel = new THREE.Vector3(); this.ret = 0;
+    this.lights = []; const tex = glowTexture();
+    const cols = [0xfff1b8, 0xc8fff0, 0xffd6f4, 0xd6e6ff];
+    for (let i = 0; i < 16; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: cols[i % cols.length], transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      sp.scale.setScalar(0.016); this.o.add(sp);
+      const p = new THREE.Vector3((Math.random() - 0.5) * 0.06, 0.02 + Math.random() * 0.1, (Math.random() - 0.5) * 0.06);
+      this.lights.push({ sp, p, v: new THREE.Vector3(), ph: Math.random() * 10 });
+    }
+  }
+
+  _handQ(h) {
+    // the hand's orientation, from the palm's facing and the line from wrist to knuckles
+    const y = h.palm.clone().sub(h.wrist).normalize(), x = h.palmNormal.clone().normalize();
+    const z = new THREE.Vector3().crossVectors(x, y).normalize(); x.crossVectors(y, z).normalize();
+    return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+  }
+
+  pick(ray) { return null; }
+
+  update(dt, input, time) {
+    if (!this.o) return;
+    const o = this.o, top = o.position.clone().add(new THREE.Vector3(0, 0.09, 0).applyQuaternion(o.quaternion));
+    input.hands.forEach((h, i) => {
+      if (!h.present) return;
+      if (h.pinching && !h._jarWas && !h._holding && !this.held) {
+        const aim = input.aim && input.aim[i];
+        const near = h.pinchPoint.distanceTo(top) < 0.1;
+        const pointed = aim && aim.ray.distanceToPoint(top) < 0.07 && top.distanceTo(aim.ray.origin) < 2.5;
+        if (near || pointed) {
+          this.held = h; h._holding = this; this.fetch = near ? 1 : 0; this.from = o.position.clone();
+          this.offQ.copy(this._handQ(h)).invert().multiply(o.quaternion); this.grip = new THREE.Vector3(0, -0.09, 0);
+          this.sound.boop(top, 220);
+        }
+      }
+      h._jarWas = h.pinching;
+    });
+    if (this.held) {
+      const h = this.held;
+      if (!h.present || !h.pinching) { h._holding = null; this.held = null; this.ret = 0; }
+      else {
+        const q = this._handQ(h).multiply(this.offQ); o.quaternion.slerp(q, Math.min(1, dt * 14));
+        const want = h.pinchPoint.clone().add(this.grip.clone().applyQuaternion(o.quaternion));
+        if (this.fetch < 1) { this.fetch = Math.min(1, this.fetch + dt / 0.3); o.position.copy(this.from).lerp(want, this.fetch * this.fetch); } else o.position.copy(want);
+      }
+    } else if (this.ret < 1 && !o.position.equals(this.home)) {
+      // floats softly back to where it sat
+      this.ret = Math.min(1, this.ret + dt / 1.2); const e = this.ret * this.ret * (3 - 2 * this.ret);
+      o.position.lerp(this.home, e * 0.25 + 0.02); o.quaternion.slerp(this.homeQ, e * 0.25 + 0.02);
+      if (this.ret >= 1) { o.position.copy(this.home); o.quaternion.copy(this.homeQ); }
+    }
+    // the little lights: they drift upward inside the jar (whichever way is up), wander, and swirl when shaken
+    const vel = o.position.clone().sub(this.prevPos).divideScalar(Math.max(dt, 1e-3)); const acc = vel.clone().sub(this.prevVel).divideScalar(Math.max(dt, 1e-3));
+    this.prevPos.copy(o.position); this.prevVel.copy(vel);
+    const inv = o.quaternion.clone().invert();
+    const upL = new THREE.Vector3(0, 1, 0).applyQuaternion(inv), accL = acc.clampLength(0, 40).applyQuaternion(inv);
+    const shake = Math.min(1, accL.length() / 25);
+    for (const L of this.lights) {
+      const f = upL.clone().multiplyScalar(0.06).addScaledVector(accL, -0.02);
+      f.x += Math.sin(time * 1.3 + L.ph) * 0.02; f.z += Math.cos(time * 1.1 + L.ph * 1.7) * 0.02;
+      // a swirl around the jar's axis that grows with shaking
+      f.x += -L.p.z * 4 * shake; f.z += L.p.x * 4 * shake;
+      L.v.addScaledVector(f, dt).multiplyScalar(Math.exp(-dt * 1.6));
+      L.p.addScaledVector(L.v, dt);
+      const rr = Math.hypot(L.p.x, L.p.z); if (rr > 0.042) { L.p.x *= 0.042 / rr; L.p.z *= 0.042 / rr; L.v.x *= -0.4; L.v.z *= -0.4; }
+      if (L.p.y < 0.012) { L.p.y = 0.012; L.v.y *= -0.4; } if (L.p.y > 0.125) { L.p.y = 0.125; L.v.y *= -0.4; }
+      L.sp.position.copy(L.p);
+      const tw = 0.75 + 0.25 * Math.sin(time * 2.5 + L.ph * 3);
+      L.sp.material.opacity = Math.min(1, tw + 0.6 * shake); L.sp.scale.setScalar(0.016 * (1 + 0.5 * shake));
+    }
+  }
+}
+
+// A few butterflies drifting slowly among the trees in the distance
+export class Butterflies {
+  constructor(GuideClass, scene) {
+    this.list = [];
+    for (let i = 0; i < 4; i++) {
+      const g = new GuideClass(scene); g.group.scale.setScalar(2.6);
+      const a = Math.random() * Math.PI * 2, r = 5 + Math.random() * 6;
+      const p = new THREE.Vector3(Math.sin(a) * r, 1.2 + Math.random() * 1.5, -Math.cos(a) * r);
+      g.appear(p); this.list.push({ g, a, r, t: Math.random() * 10, next: 0 });
+    }
+  }
+  update(dt, time) {
+    for (const b of this.list) {
+      b.next -= dt;
+      if (b.next <= 0) {
+        b.next = 6 + Math.random() * 6; b.a += (Math.random() - 0.5) * 1.2; b.r = Math.max(4.5, Math.min(12, b.r + (Math.random() - 0.5) * 3));
+        b.g.goTo(new THREE.Vector3(Math.sin(b.a) * b.r, 1.0 + Math.random() * 2.2, -Math.cos(b.a) * b.r), { orbit: 0.4, speed: 0.35 });
+      }
+      b.g.update(dt, time);
+    }
+  }
 }

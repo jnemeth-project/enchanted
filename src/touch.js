@@ -60,7 +60,7 @@ export class Touch {
       it.spring.kick(-2.2); it.flash = 1; it.cool = 0.35;
       this.sound.boop(it.center, it.hz);
       this._recolor(it);
-      if (it.toColor) this.effects.sparkle(new THREE.Vector3(it.center.x, it.box ? it.box.max.y : it.center.y, it.center.z), it.toColor.getHex(), 22, 0.14);
+      if (it.toColor) { const top = new THREE.Vector3(it.center.x, it.box ? it.box.max.y : it.center.y, it.center.z); this.effects.sparkle(top, it.toColor.getHex(), 40, 0.2); this.effects.sparkle(top, 0xffffff, 14, 0.1); }
     } else if (it.kind === 'fern') {
       const v = hand ? hand.palmVel : new THREE.Vector3(0.5, 0, 0);
       const speed = Math.min(1.5, v.length());
@@ -110,7 +110,7 @@ export class Touch {
       if (it.kind === 'boop') {
         const x = it.spring.update(dt); it.flash *= Math.exp(-dt * 3.5);
         it.o.scale.set(it.base.x * (1 - x * 0.05), it.base.y * (1 + x * 0.1), it.base.z * (1 - x * 0.05));
-        const k = 1 + it.flash * 2.4 + (it.invite || 0) * 0.7 + (this.highlight || 0); // a bright flash of light on each boop
+        const k = 1 + it.flash * 4.5 + (it.invite || 0) * 0.7 + (this.highlight || 0); // a bright, magical flash of light on each boop
         for (const m of it.o.userData.mats) if (m.userData.baseEmissive !== undefined) m.emissiveIntensity = m.userData.baseEmissive * k * (it.dim ?? 1);
       } else if (it.kind === 'fern') {
         const ax = it.sx.update(dt), az = it.sz.update(dt);
@@ -167,7 +167,7 @@ export class Touch {
     const from = it.tint.clone(), to = new THREE.Color().setHSL(VIVID[it.ci], 1.0, 0.5);
     it.toColor = to;
     if (it.colorTween) it.colorTween.t = it.colorTween.duration;
-    it.colorTween = tweens.add(0.9, (k) => { it.tint.copy(from).lerp(to, k); for (const m of mats) { m.color.copy(it.tint); m.emissive.copy(it.tint).multiplyScalar(1.15); } });
+    it.colorTween = tweens.add(0.9, (k) => { it.tint.copy(from).lerp(to, k); for (const m of mats) { m.color.copy(it.tint); m.emissive.copy(it.tint).multiplyScalar(1.35); } });
   }
 
   _solid(hit) {

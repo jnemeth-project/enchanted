@@ -16,7 +16,7 @@ import { Guide } from './guide.js';
 import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { SkyGames } from './skygames.js';
-import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines } from './play.js';
+import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines, Playfield, StarJar, Butterflies } from './play.js';
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { tweens, clamp, glowTexture } from './util.js';
@@ -85,7 +85,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
   options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
@@ -135,6 +135,9 @@ async function init() {
   twirls = new Twirls(W, sound, effects); pebbles = new Pebbles(W, sound, effects); crystals = new Crystals(W, sound, effects);
   dirt = new DirtDrawing(scene, W, sound, effects);
   mushThrow = new MushroomThrow(touch, W, sound, effects);
+  playfield = new Playfield(W, touch, sound, effects); pebbles.field = mushThrow.field = playfield;
+  jar = new StarJar(W, sound, effects);
+  flutter = new Butterflies(Guide, scene);
   // the magic mushroom pot only appears when the rain comes (it has nothing to do before then)
   potGroup = new THREE.Group(); scene.add(potGroup);
   for (const o of [W.magic.stump, W.byName.G_Shadow_SeedStump, W.magic.dust, ...(W.magic.stages || [])]) if (o) potGroup.attach(o);
@@ -146,7 +149,7 @@ async function init() {
     ...crystals.list.map((c) => ({ at: c.c, r: c.r, hz: c.hz })),
     ...pebbles.list.filter((p) => p.state === 'rest').map((p) => ({ at: p.o.position, r: 0.06, hz: 247 })),
   ]);
-  outlines = new Outlines([...W.boops, ...W.crystals, ...W.pebbles, ...W.dandelions, ...W.puffs]);
+  outlines = new Outlines([...W.boops, ...W.crystals, ...W.pebbles, ...W.dandelions, ...W.puffs, W.jar]);
   applyAccess();
   menu.volume = options.volume; menu.muted = !!options.muted;
   menu.getView = () => ({ pos: ahead(1.05, -0.04), quat: viewQuat() }); // a comfortable distance, not in your face
@@ -235,13 +238,18 @@ if (ui.howto) ui.howto.addEventListener('click', () => { TUTORIAL = true; state.
 // Put the player's head exactly at the seat, at seated eye height, whatever their real posture
 // (sitting, or lying back for the stars).
 let xrCentred = 0;
+function eyesCentre(out) {
+  const xc = renderer.xr.getCamera();
+  if (xc.cameras && xc.cameras.length >= 2) { const a = new THREE.Vector3(), b = new THREE.Vector3(); xc.cameras[0].getWorldPosition(a); xc.cameras[1].getWorldPosition(b); return out.copy(a).add(b).multiplyScalar(0.5); }
+  return xc.getWorldPosition(out);
+}
 function headTracked() {
-  const head = new THREE.Vector3(); renderer.xr.getCamera().getWorldPosition(head);
+  const head = new THREE.Vector3(); eyesCentre(head);
   const y = head.y - rig.position.y;
   return y > 0.35 && y < 2.4; // a real head, sitting or standing, above the floor
 }
 function recenter() {
-  const head = new THREE.Vector3(); renderer.xr.getCamera().getWorldPosition(head);
+  const head = new THREE.Vector3(); eyesCentre(head);
   const local = head.clone().sub(rig.position);
   rig.position.set(-local.x, clamp(EYE.y - local.y, -0.8, 1.1), -local.z);
 }
@@ -320,7 +328,6 @@ function updatePhases(dt) {
 
 function askChoice() {
   if (phase.name === 'choose') return;
-  gentleRecenter(true);
   phase.name = 'choose'; phase.t = 0;
   guide.goTo(new THREE.Vector3(0, 1.3, -1.3), { orbit: 0.05, speed: 0.8 });
   say('What would you like tonight?\nPoint and pinch, or look at one', { hold: 3.2 });
@@ -339,7 +346,6 @@ function startMode(mode) {
   if (guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
   if (mode === 'fireflies') {
     phase.name = 'fireflies';
-    gentleRecenter(true);
     input.farHands = false;
     // the forest's own glow quiets down so the fireflies stand out clearly in front of you
     sleep.quiet(0.32); touch.dimBoops(1); // the musical mushrooms keep their full colour (the fireflies are solid and bright enough now)
@@ -562,7 +568,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup });
+  window.__lo = () => ({ W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, jar, flutter });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -585,8 +591,7 @@ function step(dt) {
   if (renderer.xr.isPresenting) {
     xrFrames++;
     if (!xrCentred && xrFrames > 3 && headTracked()) { recenter(); xrCentred = performance.now(); }
-    else if (xrCentred > 0 && performance.now() - xrCentred > 2500) { recenter(); xrCentred = -performance.now(); }
-    else if (xrCentred < -1 && performance.now() + xrCentred > 4000) { gentleRecenter(); xrCentred = -1; } // once more when you have settled
+    else if (xrCentred > 0 && performance.now() - xrCentred > 2500) { recenter(); xrCentred = -1; }
   }
   desktop.update();
   input.update(dt);
@@ -598,7 +603,7 @@ function step(dt) {
     if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); crystals.update(dt, input); dirt.update(dt, input);
+    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); jar.update(dt, input, time); playfield.update(dt); flutter.update(dt, time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
     if (phase.name !== 'goodnight') session.t += dt;
