@@ -577,7 +577,7 @@ export class DrawStick extends ShelfThing {
     const u = this.o.userData || {};
     this.b = fromB(u.tip, new THREE.Vector3(0.003, 0.166, 0)); this.a = fromB('0,-0.17,0', new THREE.Vector3());
     this.axis = this.b.clone().sub(this.a).normalize();
-    this.gripL = this.a.clone().addScaledVector(this.axis, 0.05);   // you hold it near its back end
+    this.gripL = this.a.clone().addScaledVector(this.axis, 0.035);   // you hold it near its back end
     this.tipW = new THREE.Vector3();
     if (dirt) { dirt.tools.push(() => (this.held ? this.tip() : null)); this.ground = (p) => dirt._groundAt(p); }
   }
@@ -587,19 +587,20 @@ export class DrawStick extends ShelfThing {
     this.o.updateMatrixWorld(); const a = this.a.clone().applyMatrix4(this.o.matrixWorld), b = this.b.clone().applyMatrix4(this.o.matrixWorld);
     return new THREE.Line3(a, b).closestPointToPoint(p, true, tmp).distanceTo(p);
   }
-  // held like a pencil or a wand: it always points out the way your hand points, from where you hold it,
-  // so pointing your hand at the ground puts the glowing tip in the dirt
+  // the moment you take it, it settles into your hand the way you would hold a stick to draw in the dirt:
+  // gripped near its back end, slanting forward and down out of your hand (forward along your fingers and
+  // tipped toward your palm side, like a pencil), so with your hand relaxed the glowing tip reaches the ground
   place(h, dt) {
-    const from = h.wrist, at = this.anchor(h);
-    const dir = at.clone().sub(from); if (dir.lengthSq() < 1e-6) return; dir.normalize();
+    const at = this.anchor(h), fwd = at.clone().sub(h.wrist); if (fwd.lengthSq() < 1e-6) return; fwd.normalize();
+    const dir = fwd.clone().addScaledVector(h.palmNormal, 1.25).normalize();
     const q = new THREE.Quaternion().setFromUnitVectors(this.axis, dir);
-    this.o.quaternion.slerp(q, Math.min(1, dt * 18));
+    this.o.quaternion.slerp(q, this.fresh ? 1 : Math.min(1, dt * 18)); this.fresh = false;
     this.o.position.copy(at).sub(this.gripL.clone().applyQuaternion(this.o.quaternion));
     // never push the tip under the ground: it rests on the surface while it draws
     this.o.updateMatrixWorld(); const t = this.tip(); const gy = this.ground ? this.ground(t) : 0;
     if (t.y < gy - 0.005) this.o.position.y += gy - 0.005 - t.y;
   }
-  update(dt, input) { if (!this.o) return; this.grab(input); this.move(dt); this.o.updateMatrixWorld(); }
+  update(dt, input) { if (!this.o) return; const was = this.held; this.grab(input); if (this.held && !was) this.fresh = true; this.move(dt); this.o.updateMatrixWorld(); }
 }
 
 // The fairy light jar: little lights drift in the air around you. Take the jar from its shelf and scoop them
