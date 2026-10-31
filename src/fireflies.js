@@ -8,8 +8,8 @@ import { glowTexture, rand, clamp } from './util.js';
 const HIDDEN = new THREE.Color(1.0, 0.9, 0.62);    // plain firefly glow: pale gold, so every colour stands out from it
 const CORE = new THREE.Color(1.0, 0.98, 0.8);
 // the firefly model's lantern and wing hinge, from Blender's axes (x, y, z) into the game's (x, z, -y)
-const LANTERN = new THREE.Vector3(0, -0.0004, 0.0135), WING_HINGE = new THREE.Vector3(0.0018, 0.0034, -0.004);
-const VIEW = new THREE.Vector3(0, 0.82, 0); // where your eyes are (the fireflies turn a little toward you)
+const LANTERN = new THREE.Vector3(0, -0.0005, 0.0215), WING_HINGE = new THREE.Vector3(0.003, 0.008, 0.005), BUTT = new THREE.Vector3(0, 0.0005, 0.034);
+const VIEW = new THREE.Vector3(0, 0.82, 0); // where your eyes are: the fireflies face you
 // six strong colours that are easy to tell apart at night. Each also has its own shape and its own note,
 // so a pair can be matched by colour, by shape or by sound (colour blind players included).
 export const COLOURS = [
@@ -103,23 +103,22 @@ export class Fireflies {
     let orb = null, model = null, wings = [], lantern = null;
     if (this.model && this.model.body) {
       model = new THREE.Group(); g.add(model);
-      const inner = new THREE.Group(); model.add(inner); inner.position.copy(LANTERN).multiplyScalar(-1);
+      const inner = new THREE.Group(); model.add(inner);
       const body = this.model.body.clone(true); body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); body.scale.set(1, 1, 1); body.visible = true; inner.add(body);
       body.traverse((m) => { m.visible = true; if (m.isMesh && m.material && m.material.name === 'FireflyLantern') { m.material = m.material.clone(); lantern = m.material; } });
       if (this.model.wing) for (const side of [1, -1]) {
         const w = this.model.wing.clone(true); w.visible = true; w.traverse((m) => { m.visible = true; });
         w.position.set(WING_HINGE.x * side, WING_HINGE.y, WING_HINGE.z); w.rotation.set(0, 0, 0); w.scale.set(side, 1, 1); inner.add(w); wings.push({ w, side });
       }
-      model.scale.setScalar(1.8 * k); model.userData.side = Math.random() < 0.5 ? 1 : -1;
+      model.scale.setScalar(1.6 * k);
     } // (no model: the classic firefly, just its soft glow, gold until it shows its colour)
     const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: iconTex(COLOURS[ci].shape), transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
     icon.scale.setScalar(0.026 * k); icon.renderOrder = 6; g.add(icon);
-    if (model) icon.position.set(0, 0.045 * k, 0); // the colour's symbol floats just above the firefly when it shows
     g.position.copy(from); g.visible = false; this.scene.add(g);
     const mid = from.clone().lerp(to, 0.5).add(new THREE.Vector3(rand(-0.8, 0.8), rand(0.4, 1.2), rand(-0.5, 0.5)));
     this.list.push({
       g, body, halo, core, orb, model, wings, lantern, icon, from, mid, to, ci, t: -delay, dur: this.fast ? rand(1.8, 2.4) : clamp(from.distanceTo(to) / 2.4, 3, 6),
-      state: 'fly', light: 0, ph: Math.random() * 10, reveal: 0, hint: 0, outT: 0, held: false, inside: [false, false], r: 0.045 * k,
+      state: 'fly', light: 0, ph: Math.random() * 10, reveal: 0, turn: 0, hint: 0, outT: 0, held: false, inside: [false, false], r: 0.045 * k,
     });
   }
 
@@ -185,22 +184,33 @@ export class Fireflies {
         f.orb.scale.setScalar(0.021 * (this.big ? 1.3 : 1) * (1 + 0.25 * show));
       }
       if (f.model) {
-        // a three-quarter view: turned side-on to you and tipped a little so you see its back and its lantern
-        f.model.visible = f.light > 0.02;
-        f.model.lookAt(VIEW); f.model.rotateY(f.model.userData.side * 1.25); f.model.rotateX(-0.45);
-        f.model.rotateZ(Math.sin(time * 0.9 + f.ph) * 0.12);
-        // wings: a quick buzz while flying, a slow lazy flutter while it hovers
+        // it faces you with its big eyes; to show its colour it turns round and shows you its glowing bottom
+        // (with the colour's symbol on it), then turns back to face you again
+        f.turn += ((show > 0.12 ? 1 : 0) - f.turn) * Math.min(1, dt * 5);
+        const tt = f.turn * f.turn * (3 - 2 * f.turn), ms = 1.6 * (this.big ? 1.3 : 1) * (f.state === 'out' ? Math.max(0.2, f.light) : 1);
+        f.model.scale.setScalar(ms); f.model.visible = f.light > 0.02;
+        f.model.lookAt(VIEW); f.model.rotateY(Math.PI * (1 - tt) + Math.sin(time * 0.7 + f.ph) * 0.12);
+        f.model.rotateX(0.12 + Math.sin(time * 1.1 + f.ph) * 0.05); f.model.rotateZ(Math.sin(time * 0.9 + f.ph * 2) * 0.1);
+        // wings: a quick buzz while flying, a softer flutter while it hovers in line
         const fast = f.state === 'fly' || f.state === 'out';
-        const flap = fast ? 0.55 + 0.5 * Math.sin(time * 38 + f.ph) : 0.35 + 0.22 * Math.sin(time * 9 + f.ph * 3);
-        for (const { w, side } of f.wings) { w.rotation.z = -side * flap; w.rotation.y = side * 0.25; }
+        const flap = fast ? 0.75 + 0.55 * Math.sin(time * 40 + f.ph) : 0.85 + 0.3 * Math.sin(time * 14 + f.ph * 3); // raised in a soft V, so you see them from the front
+        for (const { w, side } of f.wings) { w.rotation.z = side * flap; w.rotation.y = -side * 0.2; }
+        // the glow sits on its bottom, wherever that is turned
+        f.halo.position.copy(LANTERN).multiplyScalar(ms).applyQuaternion(f.model.quaternion); f.core.position.copy(f.halo.position);
+        f.icon.position.copy(BUTT).multiplyScalar(ms).applyQuaternion(f.model.quaternion);
+        f.halo.material.color.copy(HIDDEN).lerp(COLOURS[f.ci].c, show * tt);
+        f.core.material.color.copy(CORE).lerp(COLOURS[f.ci].c.clone().lerp(new THREE.Color(1, 1, 1), 0.2), show * tt);
         if (f.lantern) {
-          const lc = HIDDEN.clone().lerp(COLOURS[f.ci].c, show);
-          f.lantern.color.copy(lc); if (f.lantern.emissive) { f.lantern.emissive.copy(lc); f.lantern.emissiveIntensity = 2.6 * Math.max(0.25, L); }
+          const lc = HIDDEN.clone().lerp(COLOURS[f.ci].c, show * tt);
+          f.lantern.color.copy(lc); if (f.lantern.emissive) { f.lantern.emissive.copy(lc); f.lantern.emissiveIntensity = 1.6 * Math.max(0.3, L); }
         }
+        f.halo.material.opacity *= 0.6 + 0.4 * tt; f.core.material.opacity *= 0.35 + 0.65 * tt;
+        f.icon.material.opacity = Math.min(1, show * 1.2) * tt * f.light;
+        f.icon.scale.setScalar(0.03 * (this.big ? 1.3 : 1));
+        continue;
       }
       f.icon.material.opacity = Math.min(1, show * 1.2) * f.light;
       f.icon.scale.setScalar(0.026 * (this.big ? 1.3 : 1) * (1 + 0.25 * show));
-      if (f.model) f.halo.material.opacity *= 0.85;
     }
     if (this.allDone && !this.doneFired && !this.list.some((f) => f.state === 'pair')) { this.doneFired = true; if (this.onAllDone) this.onAllDone(); }
   }
