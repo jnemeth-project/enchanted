@@ -277,21 +277,8 @@ export class DirtDrawing {
 
   update(dt, input) {
     this.scratchT = Math.max(0, this.scratchT - dt);
-    let dot = null;
-    // pointing at the dirt: pinch and move to draw; a quick sweep of the pointer across it wipes it clean
-    if (input.aim) input.aim.forEach((a, i) => {
-      const h = input.hands[i];
-      if (!a || (h && h._holding)) { this.prevHit[i] = null; return; }
-      this.rc.set(a.ray.origin, a.ray.direction); this.rc.far = 3;
-      const hit = this.rc.intersectObject(this.mesh)[0];
-      if (!hit) { this.prevHit[i] = null; return; }
-      dot = hit.point;
-      const pinching = h ? h.pinching : false;
-      const [u, v] = this._uv(hit.point), prev = this.prevHit[i];
-      if (pinching && prev && prev.pinching) this._line(prev.u, prev.v, u, v, hit.point);
-      if (!pinching && prev && this.inked && dt > 0 && hit.point.distanceTo(prev.p) / dt > 2.5 && this.wipe <= 0) { this.wipe = 1; this.sound.whoosh(hit.point); if (this.effects) this.effects.sparkle(hit.point, 0xd9f6ff, 18, 0.15); }
-      this.prevHit[i] = { u, v, p: hit.point.clone(), pinching };
-    });
+    const dot = null;
+    // (no drawing by pointing from a distance: pinching to pick something up must never scribble in the dirt)
     this.dot.visible = !!dot; if (dot) this.dot.position.copy(dot).add(new THREE.Vector3(0, 0.003, 0));
     input.hands.forEach((h, i) => {
       if (!h.present) { this.last[i] = null; this.prevPalm[i] = null; return; }
@@ -506,36 +493,57 @@ const v3 = (s, d) => (s ? new THREE.Vector3(...String(s).split(',').map(Number))
 
 // Something that lives on a shelf of the wise tree: pinch it to take it, it stays in your hand the way you
 // hold it, and when you let go it floats gently back to its place on the shelf.
+// A closed hand: the four fingertips curled in near the palm (with a little hysteresis, so it never flickers)
+export function gripping(h) {
+  if (!h || !h.present || !h.tips || !h.palm) return false;
+  let d = 0; for (let k = 1; k < 5; k++) d += h.tips[k].distanceTo(h.palm); d /= 4;
+  if (!h._grip && d < 0.07) h._grip = true; else if (h._grip && d > 0.088) h._grip = false;
+  return !!h._grip;
+}
+
+// Something that lives on a shelf of the wise tree. Take it either way that feels natural: pinch it, or close
+// your hand around it. It stays in your hand until you let go (open the pinch, or open your hand), then
+// floats gently back to its place on the shelf.
 class ShelfThing {
-  constructor(o, sound, grabR) {
-    this.o = o; this.sound = sound; this.grabR = grabR; if (!o) return;
+  constructor(o, sound, grabR, gripR) {
+    this.o = o; this.sound = sound; this.grabR = grabR; this.gripR = gripR || grabR * 1.6; if (!o) return;
     this.home = o.position.clone(); this.homeQ = o.quaternion.clone();
-    this.held = null; this.offQ = new THREE.Quaternion(); this.offP = new THREE.Vector3(); this.ret = 1; this.wait = 0;
+    this.held = null; this.how = null; this.offQ = new THREE.Quaternion(); this.offP = new THREE.Vector3(); this.ret = 1; this.wait = 0;
   }
-  // how far a pinch is from the thing (override for long things)
+  // how far a hand point is from the thing (override for long things)
   dist(p) { return this.o.position.distanceTo(p); }
+  anchor(h) { return this.how === 'grip' ? h.palm : h.pinchPoint; }
+  holding(h) { return this.how === 'grip' ? gripping(h) : h.pinching; }
   grab(input) {
     if (!this.o) return;
     input.hands.forEach((h) => {
       if (!h.present) return;
-      const key = '_shelf' + this.name;
-      if (h.pinching && !h[key] && !h._holding && !this.held && this.dist(h.pinchPoint) < this.grabR) {
-        this.held = h; h._holding = this;
-        const hq = handQ(h); this.offQ.copy(hq).invert().multiply(this.o.quaternion);
-        this.offP.copy(this.o.position).sub(h.pinchPoint).applyQuaternion(hq.clone().invert());
-        this.sound.boop(this.o.position.clone(), 196); this.onGrab && this.onGrab();
+      const kp = '_shelfP' + this.name, kg = '_shelfG' + this.name, g = gripping(h);
+      if (!h._holding && !this.held) {
+        let how = null;
+        if (h.pinching && !h[kp] && this.dist(h.pinchPoint) < this.grabR) how = 'pinch';
+        else if (g && !h[kg] && this.dist(h.palm) < this.gripR) how = 'grip';
+        if (how) {
+          this.held = h; this.how = how; h._holding = this;
+          const hq = handQ(h); this.offQ.copy(hq).invert().multiply(this.o.quaternion);
+          this.offP.copy(this.o.position).sub(this.anchor(h)).applyQuaternion(hq.clone().invert());
+          this.sound.boop(this.o.position.clone(), 196); this.onGrab && this.onGrab(h);
+        }
       }
-      h[key] = h.pinching;
+      h[kp] = h.pinching; h[kg] = g;
     });
+  }
+  place(h, dt) {
+    const hq = handQ(h); this.o.quaternion.slerp(hq.clone().multiply(this.offQ), Math.min(1, dt * 16));
+    this.o.position.copy(this.anchor(h)).add(this.offP.clone().applyQuaternion(hq));
   }
   move(dt) {
     if (!this.o) return;
     const o = this.o;
     if (this.held) {
       const h = this.held;
-      if (!h.present || !h.pinching) { h._holding = null; this.held = null; this.ret = 0; this.wait = 1.2; this.onLetGo && this.onLetGo(); return; }
-      const hq = handQ(h); o.quaternion.slerp(hq.clone().multiply(this.offQ), Math.min(1, dt * 16));
-      o.position.copy(h.pinchPoint).add(this.offP.clone().applyQuaternion(hq));
+      if (!h.present || !this.holding(h)) { h._holding = null; this.held = null; this.ret = 0; this.wait = 1.2; this.onLetGo && this.onLetGo(); return; }
+      this.place(h, dt);
     } else if (this.ret < 1) {
       // a moment where you dropped it, then it drifts softly back to its shelf
       if (this.wait > 0) { this.wait -= dt; return; }
@@ -563,17 +571,33 @@ export class ShelfLights {
 // The drawing stick: take it from its shelf and scratch pictures into the dirt, further out than your fingers reach.
 export class DrawStick extends ShelfThing {
   constructor(W, sound, dirt) {
-    super(W.stick, sound, 0.05); this.name = 'stick'; if (!this.o) return;
+    super(W.stick, sound, 0.06, 0.09); this.name = 'stick'; if (!this.o) return;
+    // the stick's two ends, from Blender's axes (x, y, z) into the game's (x, z, -y)
+    const fromB = (s, d) => { const v = v3(s, d); return new THREE.Vector3(v.x, v.z, -v.y); };
     const u = this.o.userData || {};
-    this.a = v3(u.grip, new THREE.Vector3(0, -0.17, 0)); this.a.y = -0.17; this.b = v3(u.tip, new THREE.Vector3(0, 0.166, 0));
+    this.b = fromB(u.tip, new THREE.Vector3(0.003, 0.166, 0)); this.a = fromB('0,-0.17,0', new THREE.Vector3());
+    this.axis = this.b.clone().sub(this.a).normalize();
+    this.gripL = this.a.clone().addScaledVector(this.axis, 0.05);   // you hold it near its back end
     this.tipW = new THREE.Vector3();
-    if (dirt) dirt.tools.push(() => (this.held || this.ret < 1 ? this.tip() : null));
+    if (dirt) { dirt.tools.push(() => (this.held ? this.tip() : null)); this.ground = (p) => dirt._groundAt(p); }
   }
   tip() { return this.tipW.copy(this.b).applyMatrix4(this.o.matrixWorld); }
   dist(p) {
     // anywhere along the stick counts (it is long and thin)
     this.o.updateMatrixWorld(); const a = this.a.clone().applyMatrix4(this.o.matrixWorld), b = this.b.clone().applyMatrix4(this.o.matrixWorld);
     return new THREE.Line3(a, b).closestPointToPoint(p, true, tmp).distanceTo(p);
+  }
+  // held like a pencil or a wand: it always points out the way your hand points, from where you hold it,
+  // so pointing your hand at the ground puts the glowing tip in the dirt
+  place(h, dt) {
+    const from = h.wrist, at = this.anchor(h);
+    const dir = at.clone().sub(from); if (dir.lengthSq() < 1e-6) return; dir.normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(this.axis, dir);
+    this.o.quaternion.slerp(q, Math.min(1, dt * 18));
+    this.o.position.copy(at).sub(this.gripL.clone().applyQuaternion(this.o.quaternion));
+    // never push the tip under the ground: it rests on the surface while it draws
+    this.o.updateMatrixWorld(); const t = this.tip(); const gy = this.ground ? this.ground(t) : 0;
+    if (t.y < gy - 0.005) this.o.position.y += gy - 0.005 - t.y;
   }
   update(dt, input) { if (!this.o) return; this.grab(input); this.move(dt); this.o.updateMatrixWorld(); }
 }
@@ -583,7 +607,7 @@ export class DrawStick extends ShelfThing {
 // and float free again. Put it down and it carries its lights back to the shelf, glowing there.
 export class FairyJar extends ShelfThing {
   constructor(W, scene, sound, effects) {
-    super(W.jar, sound, 0.09); this.name = 'jar'; this.effects = effects; if (!this.o) return;
+    super(W.jar, sound, 0.09, 0.15); this.name = 'jar'; this.effects = effects; if (!this.o) return;
     this.scene = scene; this.inside = []; this.free = []; this.pourT = 0;
     // clear glass you can see the lights through
     this.o.traverse((m) => { if (m.isMesh && /glass/i.test(m.material.name || '')) { m.material = m.material.clone(); Object.assign(m.material, { transparent: true, opacity: 0.2, depthWrite: false, transmission: 0, metalness: 0, roughness: 0.1 }); m.material.color.setRGB(0.7, 0.8, 0.9); if (m.material.emissive) m.material.emissive.setRGB(0.05, 0.06, 0.07); m.material.needsUpdate = true; m.renderOrder = 4; } });
@@ -594,7 +618,7 @@ export class FairyJar extends ShelfThing {
       const ang = THREE.MathUtils.degToRad(a), home = new THREE.Vector3(Math.sin(ang) * r, y, -Math.cos(ang) * r);
       const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: cols[i % cols.length], transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: cols[i % cols.length], transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
-      core.scale.setScalar(0.022); halo.scale.setScalar(0.07); scene.add(core); core.add(halo); halo.scale.setScalar(3.2);
+      core.scale.setScalar(0.03); halo.scale.setScalar(0.07); scene.add(core); core.add(halo); halo.scale.setScalar(3.2);
       this.free.push({ sp: core, home, p: home.clone(), ph: Math.random() * 10, state: 'free', t: 0, hz: [523.25, 587.33, 659.25, 783.99, 880][i % 5] });
     });
     this.all = [...this.free];
@@ -604,19 +628,39 @@ export class FairyJar extends ShelfThing {
     this.floorY = box.min.y - this.o.position.y + 0.014; this.topY = box.max.y - this.o.position.y - 0.03;
     this.grabR = Math.max(0.08, (box.max.y - box.min.y) * 0.6);
   }
+  _catch(L, m) {
+    L.state = 'in'; L.t = 0; L.from = L.p.clone(); L.v = new THREE.Vector3();
+    L.q = new THREE.Vector3((Math.random() - 0.5) * 0.05, this.floorY + 0.01 + Math.random() * (this.topY - this.floorY - 0.02), (Math.random() - 0.5) * 0.05);
+    this.sound.chime ? this.sound.chime(m.clone(), L.hz) : this.sound.boop(m.clone(), L.hz);
+    if (this.effects) this.effects.sparkle(m.clone(), 0xffe2a0, 10, 0.05);
+    if (this.all.every((x) => x.state === 'in') && this.effects) this.effects.sparkle(m.clone(), 0xffe2a0, 40, 0.12);
+  }
   mouth() { return this.mouthL.clone().applyQuaternion(this.o.quaternion).add(this.o.position); }
   update(dt, input, time) {
     if (!this.o) return;
     this.grab(input); this.move(dt);
     const o = this.o, up = new THREE.Vector3(0, 1, 0).applyQuaternion(o.quaternion), m = this.mouth();
+    // pinch a light out of the air: it follows your fingers; let go of it at the jar's mouth and it drops in,
+    // anywhere else and it floats back to its place
+    input.hands.forEach((h) => {
+      if (!h.present) return;
+      if (h.pinching && !h._lightWas && !h._holding) {
+        let best = null, bd = 0.075;
+        for (const L of this.all) if (L.state === 'free') { const d = L.p.distanceTo(h.pinchPoint); if (d < bd) { bd = d; best = L; } }
+        if (best) { best.state = 'pinched'; best.hand = h; h._holding = best; this.sound.boop(best.p.clone(), best.hz); }
+      }
+      h._lightWas = h.pinching;
+    });
+    for (const L of this.all) if (L.state === 'pinched') {
+      const h = L.hand;
+      if (h.present && h.pinching) { L.p.copy(h.pinchPoint); L.sp.position.copy(L.p); continue; }
+      h._holding = null; L.hand = null;
+      if (L.p.distanceTo(this.mouth()) < 0.13) { L.state = 'free'; this._catch(L, this.mouth()); }
+      else { L.state = 'out'; L.t = 0; L.from = L.p.clone(); }
+    }
     // scoop: a free light close to the open mouth flies in
     if (this.held && up.y > -0.2) for (const L of this.all) {
-      if (L.state === 'free' && L.p.distanceTo(m) < 0.12) {
-        L.state = 'in'; L.t = 0; L.from = L.p.clone(); L.q = new THREE.Vector3((Math.random() - 0.5) * 0.05, this.floorY + 0.01 + Math.random() * (this.topY - this.floorY - 0.02), (Math.random() - 0.5) * 0.05); L.v = new THREE.Vector3();
-        this.sound.chime ? this.sound.chime(m.clone(), L.hz) : this.sound.boop(m.clone(), L.hz);
-        if (this.effects) this.effects.sparkle(m.clone(), 0xffe2a0, 10, 0.05);
-        if (this.all.every((x) => x.state !== 'free') && this.effects) this.effects.sparkle(m.clone(), 0xffe2a0, 40, 0.12);
-      }
+      if (L.state === 'free' && L.p.distanceTo(m) < 0.12) this._catch(L, m);
     }
     // tip it upside down and they pour out, one at a time
     this.pourT = Math.max(0, this.pourT - dt);
@@ -648,7 +692,7 @@ export class FairyJar extends ShelfThing {
         L.sp.material.opacity = tw;
       } else if (L.state === 'out') {
         // poured out: it floats back up to its place in the air
-        if (L.sp.parent !== this.scene) { this.scene.add(L.sp); L.sp.scale.setScalar(0.022); }
+        if (L.sp.parent !== this.scene) { this.scene.add(L.sp); L.sp.scale.setScalar(0.03); }
         L.t = Math.min(1, L.t + dt / 2.2); const e = L.t * L.t * (3 - 2 * L.t);
         L.p.copy(L.from).lerp(L.home, e); L.p.y += Math.sin(L.t * Math.PI) * 0.08; L.sp.position.copy(L.p); L.sp.material.opacity = tw;
         if (L.t >= 1) L.state = 'free';
