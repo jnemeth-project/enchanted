@@ -16,7 +16,7 @@ import { Guide } from './guide.js';
 import { Gaze } from './gaze.js';
 import { Captions } from './captions.js';
 import { SkyGames } from './skygames.js';
-import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines, Playfield, Butterflies, DrawStick, FairyJar, ShelfLights } from './play.js';
+import { Twirls, Pebbles, Crystals, DirtDrawing, MushroomThrow, SoundGuides, Outlines, Playfield, Butterflies, DrawStick, FairyJar, ShelfLights, AirTrails } from './play.js';
 import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { ThingsMenu } from './thingsmenu.js';
@@ -87,7 +87,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy;
+let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
   options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
@@ -141,7 +141,7 @@ async function init() {
   playfield = new Playfield(W, touch, sound, effects); pebbles.field = mushThrow.field = playfield;
   flutter = new Butterflies(Guide, scene);
   // the wise tree's shelves: the drawing stick and the fairy light jar
-  stick = new DrawStick(W, sound, dirt); jar = new FairyJar(W, scene, sound, effects); shelfLights = new ShelfLights(W, scene);
+  stick = new DrawStick(W, sound, dirt); stick.air = airTrails = new AirTrails(scene); jar = new FairyJar(W, scene, sound, effects); shelfLights = new ShelfLights(W, scene);
   // the magic mushroom pot only appears when the rain comes (it has nothing to do before then)
   potGroup = new THREE.Group(); scene.add(potGroup);
   for (const o of [W.magic.stump, W.byName.G_Shadow_SeedStump, W.magic.dust, ...(W.magic.stages || [])]) if (o) potGroup.attach(o);
@@ -326,22 +326,22 @@ function updatePhases(dt) {
     }
   } else if (P === 'sleepy') {
     // near the end: the little mushrooms go back to sleep, then the rain if your mushroom needs it
-    if (remaining() < 80 && !phase.wrapping) {
+    if (remaining() < 80 && !phase.wrapping && !keepPlaying()) {
       phase.wrapping = true; sleepy.stop(); say('The little mushrooms are asleep', { hold: 2.6 });
       tweens.add(0.1, () => {}, { delay: 3, done: () => { if (phase.name !== 'goodnight') { if (needsWater() && remaining() > 40) startRain(); else goodnight(); } } });
     }
   } else if (P === 'sky') {
     if (JUST_SIT && phase.t > 8 && phase.t - (phase.autoStar ?? 0) > 5) { phase.autoStar = phase.t; sky.autoStep(); }
     // near the end: if your mushroom still needs water, the sky closes and the rain comes
-    if (remaining() < 80 && !phase.wrapping && needsWater()) wrapUpSky();
-    else if (remaining() < 28 && !phase.wrapping) { say('The sky is asleep', { hold: 3 }); sky.stop(); goodnight(); }
+    if (remaining() < 80 && !phase.wrapping && needsWater() && !keepPlaying()) wrapUpSky();
+    else if (remaining() < 28 && !phase.wrapping && !keepPlaying()) { say('The sky is asleep', { hold: 3 }); sky.stop(); goodnight(); }
   }
   // the session: a gentle note near the end, then the night winds down in time
   if (P !== 'goodnight' && P !== 'loading') {
-    if (remaining() < 62 && !session.warned) { session.warned = true; say('One more minute', { hold: 2.4 }); }
-    if (P === 'fireflies' && remaining() < 80 && !phase.wrapping) wrapUpFireflies();
+    if (remaining() < 62 && !session.warned && !phase.mode) { session.warned = true; say('One more minute', { hold: 2.4 }); }
+    if (P === 'fireflies' && remaining() < 80 && !phase.wrapping && !keepPlaying()) wrapUpFireflies();
     if (P === 'choose' && remaining() < 30) goodnight();
-    if (remaining() <= 0) goodnight();
+    if (remaining() <= 0 && !keepPlaying()) goodnight();
   }
   if (rain) guide.rainLevel = rain.level;
 }
@@ -423,7 +423,7 @@ function onAllPairs() {
   // level up, every board: no limit, as far as you can go within the session
   state.memoryLevel = (state.memoryLevel || 1) + 1; saveState(state);
   if (phase.name !== 'fireflies' || phase.wrapping) return;
-  if (remaining() < 100) { wrapUpFireflies(true); return; }
+  if (remaining() < 100 && !keepPlaying()) { wrapUpFireflies(true); return; }
   say('Well remembered', { hold: 1.8 });
   tweens.add(0.1, () => {}, { delay: 3, done: () => { if (phase.name === 'fireflies' && !phase.wrapping) startLevel(); } });
 }
@@ -569,6 +569,15 @@ function onShapeDone(name, k) {
   if (k === 1) guide.twirl(() => guide.goTo(new THREE.Vector3(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 }));
 }
 
+// The night's length is a gentle guide, never a cut-off: while you are in the middle of a game, the time
+// stretches (a couple of minutes at a time, up to ten more) and the night only winds down once you stop.
+function keepPlaying() {
+  if (!phase.mode || phase.wrapping || (session.over || 0) >= 600) return false;
+  session.len += 120; session.over = (session.over || 0) + 120;
+  if (!session.lateSaid) { session.lateSaid = true; say("It's getting late\nStop whenever you're ready", { hold: 3.4 }); }
+  return true;
+}
+
 // every session ends with the rain for your mushroom, until it has fully grown
 function needsWater() { return seed.state.stage < 3 && (phase.firstNight || !seed.grewThisSession); }
 
@@ -643,7 +652,7 @@ function step(dt) {
     if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); jar.update(dt, input, time); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
+    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); jar.update(dt, input, time); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
     things.update(dt, input, time, eyeRay());

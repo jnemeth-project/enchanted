@@ -95,7 +95,7 @@ export class Choice {
   pickRay(ray) {
     if (!this.active) return null;
     if (!this.armed) return null;
-    for (const o of this.options) if (o.open && this._rayHits(o, ray)) return { key: o, size: 0.22 * S, dwell: 2.2, point: this._centre(o), fire: () => this.pick(o) };
+    for (const o of this.options) if (o.open && this._rayHits(o, ray)) return { key: o, size: 0.22 * S, dwell: 2.2, confirm: true, point: this._centre(o), fire: () => this.pick(o) }; // looking needs a second, deliberate look to confirm (so a resting gaze never ends the night)
     return null;
   }
 

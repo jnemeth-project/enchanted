@@ -126,10 +126,10 @@ export class Pebbles {
           o.position.y = gy;
           const impact = -pb.v.y;
           if (impact > 1.2) {
-            this.sound.boop(o.position.clone(), 70 + Math.random() * 20);
+            this.sound.thump(o.position.clone(), impact / 4);
             if (this.effects) this.effects.sparkle(o.position.clone(), 0xcfe4ff, 8, 0.06);
             pb.v.y = impact * 0.32; pb.v.x *= 0.55; pb.v.z *= 0.55; pb.spin.multiplyScalar(0.5);
-          } else { pb.state = 'land'; pb.t = 0; pb.v.set(0, 0, 0); }
+          } else { if (impact > 0.3) this.sound.thump(o.position.clone(), 0.25); pb.state = 'land'; pb.t = 0; pb.v.set(0, 0, 0); }
         }
         if (pb.t > 12 || o.position.length() > 70) { pb.state = 'land'; pb.t = 0; }
       } else if (pb.state === 'land') {
@@ -230,11 +230,11 @@ export class PotHint {
 export class DirtDrawing {
   constructor(scene, W, sound, effects) {
     this.sound = sound; this.effects = effects;
-    this.w = 0.9; this.d = 0.62; this.centre = new THREE.Vector3(0, 0, -0.58); // reachable with a fingertip near you, and further out with the drawing stick
+    this.w = 1.2; this.d = 0.8; this.centre = new THREE.Vector3(0, 0, -0.62); // reachable with a fingertip near you, and further out with the drawing stick
     this.tools = []; this.toolLast = new Map(); // other things that draw: the drawing stick's tip
     // the drawing surface hugs the ground: a fine grid whose every point sits just on the path
     const ground = [W.byName.Ground].filter(Boolean), ray = new THREE.Raycaster();
-    const NX = 24, NZ = 18, geo = new THREE.PlaneGeometry(this.w, this.d, NX, NZ); geo.rotateX(-Math.PI / 2);
+    const NX = 32, NZ = 22, geo = new THREE.PlaneGeometry(this.w, this.d, NX, NZ); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position; this.NX = NX; this.NZ = NZ; this.hgt = new Float32Array(pos.count);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i) + this.centre.x, z = pos.getZ(i) + this.centre.z;
@@ -242,7 +242,7 @@ export class DirtDrawing {
       const y = (h ? h.point.y : 0) + 0.007; pos.setY(i, y); this.hgt[i] = y;
     }
     pos.needsUpdate = true; geo.computeVertexNormals();
-    this.canvas = document.createElement('canvas'); this.canvas.width = 640; this.canvas.height = 400;
+    this.canvas = document.createElement('canvas'); this.canvas.width = 900; this.canvas.height = 600;
     this.g = this.canvas.getContext('2d');
     this.tex = new THREE.CanvasTexture(this.canvas); this.tex.colorSpace = THREE.SRGBColorSpace;
     this.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, fog: false }));
@@ -268,8 +268,9 @@ export class DirtDrawing {
     // a groove pressed into the earth: a soft lighter rim of pushed-up soil, a darker brown furrow in the middle
     // (each layer is tucked under what is already there, so a line stays one smooth groove with no rings)
     const seg = (c, w) => { g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(u0, v0); g.lineTo(u, v); g.stroke(); };
-    seg('rgb(30, 18, 8)', 7);
-    g.globalCompositeOperation = 'destination-over'; seg('rgb(58, 36, 18)', 16); seg('rgb(84, 58, 34)', 24);
+    // a glowing furrow (warm light running along the bottom of the groove), so lines show clearly at night
+    seg('rgb(255, 214, 140)', 4);
+    g.globalCompositeOperation = 'destination-over'; seg('rgb(176, 112, 52)', 9); seg('rgb(40, 24, 12)', 16); seg('rgb(132, 98, 64)', 24);
     g.globalCompositeOperation = 'source-over';
     this.tex.needsUpdate = true; this.inked = true;
     if (this.scratchT <= 0 && Math.hypot(u - u0, v - v0) > 2) { this.scratchT = 0.25; this.sound.rustle(at.clone(), 0.12); }
@@ -302,7 +303,7 @@ export class DirtDrawing {
     for (const tool of this.tools) {
       const tip = tool(); const key = tool;
       const inside = tip && Math.abs(tip.x - this.centre.x) < this.w / 2 && Math.abs(tip.z - this.centre.z) < this.d / 2;
-      if (inside && tip.y < this._groundAt(tip) + 0.03) {
+      if (inside && tip.y < this._groundAt(tip) + 0.05) {
         const [u, v] = this._uv(tip), last = this.toolLast.get(key);
         if (last) this._line(last[0], last[1], u, v, tip);
         this.toolLast.set(key, [u, v]);
@@ -569,6 +570,46 @@ export class ShelfLights {
   update(time) { for (const b of this.list) b.sp.material.opacity = 0.42 + 0.18 * Math.sin(time * 1.6 + b.ph) * Math.sin(time * 0.7 + b.ph * 0.3); }
 }
 
+// Light painting: lines of soft glowing light drawn in the air with the drawing stick's tip. Each line
+// lingers for a while, then slowly fades away, so the air never fills up.
+export class AirTrails {
+  constructor(scene) {
+    const N = this.N = 2400;
+    this.pos = new Float32Array(N * 3).fill(-999); this.col = new Float32Array(N * 3); this.age = new Float32Array(N).fill(99); this.hue = new Float32Array(N);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    this.pts = new THREE.Points(g, new THREE.PointsMaterial({ map: glowTexture(), size: 0.016, sizeAttenuation: true, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.pts.frustumCulled = false; this.pts.renderOrder = 6; scene.add(this.pts);
+    this.i = 0; this.last = null; this.h = 0; this.c = new THREE.Color(); this.LIFE = 14;
+  }
+  // add light along the path from the last point to p (a dot every few millimetres, so the line is smooth)
+  draw(p, dt) {
+    if (!this.last) { this.last = p.clone(); return; }
+    const d = p.distanceTo(this.last); if (d < 0.003) return;
+    const n = Math.min(40, Math.ceil(d / 0.0035));
+    for (let k = 1; k <= n; k++) {
+      const q = this.last.clone().lerp(p, k / n), j = this.i++ % this.N;
+      this.pos[j * 3] = q.x; this.pos[j * 3 + 1] = q.y; this.pos[j * 3 + 2] = q.z; this.age[j] = 0; this.hue[j] = this.h;
+    }
+    this.h = (this.h + d * 0.6) % 1; this.last.copy(p);
+    this.pts.geometry.attributes.position.needsUpdate = true;
+  }
+  lift() { this.last = null; }
+  update(dt) {
+    let any = false;
+    for (let j = 0; j < this.N; j++) {
+      if (this.age[j] > this.LIFE) continue;
+      any = true; this.age[j] += dt;
+      const fade = this.age[j] < this.LIFE - 3 ? 1 : Math.max(0, (this.LIFE - this.age[j]) / 3);
+      // warm gold drifting through soft mint and pink, like the forest's own glow
+      this.c.setHSL(0.11 + 0.3 * (0.5 + 0.5 * Math.sin(this.hue[j] * Math.PI * 2)), 0.75, 0.62).multiplyScalar(fade * (0.85 + 0.15 * Math.sin(this.age[j] * 3 + j)));
+      this.col[j * 3] = this.c.r; this.col[j * 3 + 1] = this.c.g; this.col[j * 3 + 2] = this.c.b;
+      if (this.age[j] > this.LIFE) { this.pos[j * 3 + 1] = -999; this.pts.geometry.attributes.position.needsUpdate = true; }
+    }
+    if (any) this.pts.geometry.attributes.color.needsUpdate = true;
+  }
+}
+
 // The drawing stick: take it from its shelf and scratch pictures into the dirt, further out than your fingers reach.
 export class DrawStick extends ShelfThing {
   constructor(W, sound, dirt) {
@@ -601,7 +642,14 @@ export class DrawStick extends ShelfThing {
     this.o.updateMatrixWorld(); const t = this.tip(); const gy = this.ground ? this.ground(t) : 0;
     if (t.y < gy - 0.005) this.o.position.y += gy - 0.005 - t.y;
   }
-  update(dt, input) { if (!this.o) return; const was = this.held; this.grab(input); if (this.held && !was) this.fresh = true; this.move(dt); this.o.updateMatrixWorld(); }
+  update(dt, input) {
+    if (!this.o) return; const was = this.held; this.grab(input); if (this.held && !was) this.fresh = true; this.move(dt); this.o.updateMatrixWorld();
+    // in the air (tip well above the ground), the stick paints glowing light; touching the dirt, it scratches a groove
+    if (this.air) {
+      const t = this.held ? this.tip() : null;
+      if (t && t.y > (this.ground ? this.ground(t) : 0) + 0.07) this.air.draw(t.clone(), dt); else this.air.lift();
+    }
+  }
 }
 
 // The fairy light jar: little lights drift in the air around you. Take the jar from its shelf and scoop them

@@ -100,7 +100,7 @@
 // Starting VR itself still needs one real pinch or click: browsers only allow that after a deliberate action.
 (() => {
   const DWELL = 1.6;
-  const targets = () => [...document.querySelectorAll('#session button, .opts label, #how-to')];
+  const targets = () => [...document.querySelectorAll('.opts label, #how-to')];
   for (const el of targets()) {
     el.classList.add('dwell');
     let t0 = 0, raf = 0;

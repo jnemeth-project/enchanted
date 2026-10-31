@@ -179,6 +179,20 @@ export class Sound {
     const og = ctx.createGain(); this._env(og, t, 0.01, 0.2, 0.3); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.4);
   }
 
+  // A pebble landing on the soft forest floor: a short, earthy thump (a low knock with a little puff of soil),
+  // stronger the harder it lands.
+  thump(pos, strength = 1) {
+    if (!this.enabled) return;
+    const k = Math.max(0.25, Math.min(1, strength)), ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    const f0 = 95 + Math.random() * 20; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.45, t + 0.12);
+    const og = ctx.createGain(); this._env(og, t, 0.004, 0.75 * k, 0.16); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.25);
+    const n = this._src(this.brown); const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(900, t); lp.frequency.exponentialRampToValueAtTime(260, t + 0.1);
+    const g = ctx.createGain(); this._env(g, t, 0.002, 0.5 * k, 0.11);
+    n.connect(lp); lp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.2);
+  }
+
   // Breathy whoosh for dandelion seeds lifting away.
   whoosh(pos) {
     if (!this.enabled) return;
