@@ -50,8 +50,9 @@ export class Gaze {
     // in the headset, look from exactly between your two eyes (the combined XR camera sits a little behind and off-centre)
     if (xr && cam.cameras && cam.cameras.length >= 2) {
       const a = new THREE.Vector3(), b = new THREE.Vector3();
-      cam.cameras[0].getWorldPosition(a); cam.cameras[1].getWorldPosition(b); o.copy(a).add(b).multiplyScalar(0.5);
-      cam.cameras[0].getWorldQuaternion(q);
+      // (read straight from the eye cameras' world matrices: getWorldPosition() would recompute them without the rig)
+      a.setFromMatrixPosition(cam.cameras[0].matrixWorld); b.setFromMatrixPosition(cam.cameras[1].matrixWorld); o.copy(a).add(b).multiplyScalar(0.5);
+      cam.cameras[0].matrixWorld.decompose(new THREE.Vector3(), q, new THREE.Vector3());
     } else { cam.getWorldPosition(o); cam.getWorldQuaternion(q); }
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
     const ray = new THREE.Ray(o, dir);

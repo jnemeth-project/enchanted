@@ -400,8 +400,10 @@ if (ui.howto) ui.howto.addEventListener('click', () => { TUTORIAL = true; state.
 // (sitting, or lying back for the stars).
 let xrCentred = 0;
 function eyesCentre(out) {
+  // halfway between your two eyes. (Read straight from the eye cameras' world matrices, which the renderer sets
+  // each frame: getWorldPosition() would recompute them without the player rig, as they have no parent.)
   const xc = renderer.xr.getCamera();
-  if (xc.cameras && xc.cameras.length >= 2) { const a = new THREE.Vector3(), b = new THREE.Vector3(); xc.cameras[0].getWorldPosition(a); xc.cameras[1].getWorldPosition(b); return out.copy(a).add(b).multiplyScalar(0.5); }
+  if (xc.cameras && xc.cameras.length >= 2) { const a = new THREE.Vector3().setFromMatrixPosition(xc.cameras[0].matrixWorld), b = new THREE.Vector3().setFromMatrixPosition(xc.cameras[1].matrixWorld); return out.copy(a).add(b).multiplyScalar(0.5); }
   return xc.getWorldPosition(out);
 }
 // where your eyes are now (in the headset, or the screen camera)
