@@ -1,5 +1,5 @@
 // Progress that survives between nights, kept on the device only (no account needed).
-const KEY = 'lightsout.v1';
+const KEY = 'enchanted.v1', OLD_KEY = 'lightsout.v1';   // (the game was called Lights Out before: its saved nights carry over)
 
 // A "night" runs from 6 am to 6 am local time, so a late session still counts as tonight.
 export function nightKey(d = new Date()) {
@@ -14,7 +14,7 @@ export function defaultState() {
 
 export function loadState(storage = globalThis.localStorage) {
   try {
-    const raw = storage && storage.getItem(KEY);
+    const raw = storage && (storage.getItem(KEY) || storage.getItem(OLD_KEY));
     if (!raw) return defaultState();
     return { ...defaultState(), ...JSON.parse(raw) };
   } catch { return defaultState(); }

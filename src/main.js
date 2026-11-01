@@ -30,8 +30,8 @@ import { loadState, beginNight, saveState, wateredTonight, nightKey } from './sa
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
 // Options chosen on the start screen (remembered on this device)
-const OPT_KEY = 'lightsout.options';
-const options = (() => { try { return { look: false, sit: false, bright: false, volume: 0.8, ...JSON.parse(localStorage.getItem(OPT_KEY) || '{}') }; } catch { return { look: false, sit: false, bright: false, volume: 0.8 }; } })();
+const OPT_KEY = 'enchanted.options', OLD_OPT_KEY = 'lightsout.options';   // (kept from when the game was called Lights Out)
+const options = (() => { try { return { look: false, sit: false, bright: false, volume: 0.8, ...JSON.parse(localStorage.getItem(OPT_KEY) || localStorage.getItem(OLD_OPT_KEY) || '{}') }; } catch { return { look: false, sit: false, bright: false, volume: 0.8 }; } })();
 delete options.seatNow;   // (asked fresh every time: where you are tonight may not be where you were last time)
 if (params.get('mode') === 'sit') options.sit = true;
 if (params.has('look')) options.look = true;

@@ -4,7 +4,7 @@
 
 Enchanted is a seated, hands-only VR wind-down for Meta Quest and Meta VR Glasses. Each night takes about ten minutes, needs no instructions, and ends with the forest asleep around you.
 
-**▶ Play it:** open **https://jnemeth-project.github.io/lights-out/** in the Meta Quest browser and tap **Enter the forest**.
+**▶ Play it:** open **https://jnemeth-project.github.io/enchanted/** in the Meta Quest browser and tap **Enter the forest**.
 
 ![The glowing forest, seen from your seat](docs/forest.jpg)
 
