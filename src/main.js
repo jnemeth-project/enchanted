@@ -247,8 +247,7 @@ function begin() {
   if (options.voice && eggs) eggs.startVoice(sound.ctx);
   phase.name = 'arrival'; phase.t = 0;
   session.t = 0; session.len = (options.session || 10) * 60;
-  // a quiet arrival: no words at first, just the forest. The pot is already beside you, quietly growing.
-  tweens.add(0.1, () => {}, { delay: 8, done: () => showPot(true) });
+  // a quiet arrival: no words at first, just the forest. The pot appears later, when the rain comes.
 }
 
 function readOptions() {
@@ -349,7 +348,7 @@ function pebbleNote(dt) {
   noteLook = near ? noteLook + dt : Math.max(0, noteLook - dt * 2);
   if (noteLook > 1.2) {
     noteShown = true;
-    say('If turning makes you feel queasy,\nthere are pebbles on your right too,\nnext to the pond', { hold: 5, at: c.clone().lerp(eyePos(), 0.35).add(new THREE.Vector3(0, 0.2, 0)), width: 0.9 });   // just above the shelf, a little towards you
+    say('If turning makes you feel queasy,\nthere are pebbles on your right too,\nnext to the pond', { hold: 5, at: eyePos().add(c.clone().sub(eyePos()).normalize().multiplyScalar(2.0)).add(new THREE.Vector3(0, 0.3, 0)), width: 0.62 });   // small, and well beyond the shelf (never close to your eyes)
   }
 }
 
@@ -610,8 +609,8 @@ function showPot(quiet = false) {
   const st = W.magic.stump; if (st) { const s0 = st.scale.clone(); st.scale.setScalar(0.001); tweens.add(1.6, (k) => st.scale.copy(s0).multiplyScalar(Math.max(0.001, 1 - Math.pow(1 - k, 3)))); }
   effects.sparkle(seed.target.clone(), 0xffe2a8, 40, 0.25); sound.grow(seed.target, false);
   if (!quiet) say('A little pot has appeared beside you\nCatch the rain in your cupped hands\nand tip it in to grow a magic mushroom', { hold: 5.5 });
-  // a new seed sends up its first sprout soon after, so something is growing right from the start
-  else if (seed.state.stage === 0) tweens.add(0.1, () => {}, { delay: 4, done: () => seed.sprout() });
+  // a new seed sends up its first sprout soon after the pot appears, so something is growing from the first night
+  if (seed.state.stage === 0) tweens.add(0.1, () => {}, { delay: 3, done: () => seed.sprout() });
 }
 
 function startRain() {

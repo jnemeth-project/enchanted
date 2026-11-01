@@ -43,8 +43,8 @@ export class Touch {
     // the curl fern within reach: brush up along it and it unrolls, then slowly curls back
     if (W.reachFern) {
       const box = new THREE.Box3().setFromObject(W.reachFern), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
-      let mesh = null; W.reachFern.traverse((m) => { if (m.isMesh && m.morphTargetInfluences) mesh = m; });
-      this.items.push({ kind: 'frond', o: W.reachFern, mesh, center: c, radius: Math.max(size.x, size.z) * 0.6 + 0.06, box, inside: [false, false], cool: 0, open: 0 });
+      const meshes = []; W.reachFern.traverse((m) => { if (m.isMesh && m.morphTargetInfluences) meshes.push(m); });   // the frond and its glowing tip are separate parts: all unroll together
+      this.items.push({ kind: 'frond', o: W.reachFern, meshes, center: c, radius: Math.max(size.x, size.z) * 0.6 + 0.06, box, inside: [false, false], cool: 0, open: 0 });
     }
     for (const o of W.dandelions) {
       const box = new THREE.Box3().setFromObject(o);
@@ -167,7 +167,7 @@ export class Touch {
         const a = it.swing.update(dt), b = it.swing2.update(dt);
         it.o.rotation.set(it.rot.x + a * 0.35, it.rot.y, it.rot.z + b * 0.35);
       } else if (it.kind === 'frond') {
-        if (it.mesh) it.mesh.morphTargetInfluences[0] = it.open;
+        for (const m of it.meshes) m.morphTargetInfluences[0] = it.open;
       } else if (it.kind === 'jelly') {
         // squash and stretch (keeping its volume), with a soft sideways sway: a wobbly, bouncy bubble
         const x = it.spring.update(dt), l = it.lean.update(dt); it.flash *= Math.exp(-dt * 2.2);

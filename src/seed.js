@@ -164,12 +164,46 @@ export class Seed {
     if (this.onPlace) this.onPlace(new THREE.Vector3(entry.x, entry.y, entry.z));
   }
 
+  // moves the spot c (x, z) out of anything it would grow into; returns true if it moved
+  _clear(c, bloom) {
+    const W = this.W, b = new THREE.Box3(), sz = new THREE.Vector3(), ctr = new THREE.Vector3();
+    b.setFromObject(bloom); b.getSize(sz); const r = Math.max(sz.x, sz.z) * 0.5;
+    const objs = new Set([...(this.touch ? this.touch.items.map((it) => it.o) : []), ...(W.bubbles || []), ...(W.crystals || []), ...(W.reachRocks || []), ...this.collection.map((e) => e.o)]);
+    const obs = [];
+    for (const o of objs) {
+      if (!o || o === bloom) continue;
+      b.setFromObject(o); if (b.isEmpty()) continue; b.getCenter(ctr); b.getSize(sz);
+      const ro = Math.max(sz.x, sz.z) * 0.5; if (ro > 1.2 || Math.hypot(ctr.x - c.x, ctr.z - c.z) > 2.5) continue;
+      obs.push([ctr.x, ctr.z, ro]);
+    }
+    // the nearest free spot to where it was set down (searching outwards in rings), never under you or where the sleepy mushrooms' mound rises
+    const free = (x, z) => Math.hypot(x, z) >= 0.85 && Math.hypot(x / (0.62 + r), (z + 0.55) / (0.47 + r)) >= 1 && obs.every(([ox, oz, ro]) => Math.hypot(x - ox, z - oz) >= r + ro + 0.04);
+    let moved = false;
+    if (!free(c.x, c.z)) {
+      search: for (let d = 0.05; d <= 1.5; d += 0.05) {
+        const n = Math.max(8, Math.round(d * 40));
+        for (let k = 0; k < n; k++) {
+          const a = (k / n) * Math.PI * 2, x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
+          if (free(x, z)) { c.x = x; c.z = z; moved = true; break search; }
+        }
+      }
+    }
+    if (moved) { c.x = +c.x.toFixed(3); c.z = +c.z.toFixed(3); }
+    return moved;
+  }
+
   _spawnCollected(c, animate = false) {
     const bloom = this.stages[3]; if (!bloom) return;
     // mushrooms grown in earlier nights that were set down too close (under you, or in the dirt in front): move them out
     const flat = Math.hypot(c.x, c.z);
     if (flat < 0.8) {
       const k = flat > 0.05 ? 0.92 / flat : 1; c.x = flat > 0.05 ? +(c.x * k).toFixed(3) : 0.9; c.z = flat > 0.05 ? +(c.z * k).toFixed(3) : 0.55;
+      const rc = new THREE.Raycaster(new THREE.Vector3(c.x, 1.5, c.z), new THREE.Vector3(0, -1, 0), 0, 6); const h = rc.intersectObjects(this.W.grounds, true)[0];
+      if (h) c.y = +(h.point.y - 0.02).toFixed(3);
+      if (!this.demo) saveState(this.state);
+    }
+    // never grown into another mushroom, crystal or rock: if it overlaps one, it steps aside until it is clear
+    if (this._clear(c, bloom)) {
       const rc = new THREE.Raycaster(new THREE.Vector3(c.x, 1.5, c.z), new THREE.Vector3(0, -1, 0), 0, 6); const h = rc.intersectObjects(this.W.grounds, true)[0];
       if (h) c.y = +(h.point.y - 0.02).toFixed(3);
       if (!this.demo) saveState(this.state);
