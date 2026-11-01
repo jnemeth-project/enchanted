@@ -58,7 +58,7 @@ if (new URLSearchParams(location.search).has('emulate')) {
   window.__xrdev = dev;
 }
 const world = await World.create(document.getElementById('scene-container'), {
-  xr: { sessionMode: 'immersive-vr', offer: 'none', referenceSpace: 'local-floor', features: { handTracking: true } },
+  xr: { sessionMode: 'immersive-vr', offer: 'none', referenceSpace: 'local-floor', features: { handTracking: true }, restoreCameraOnExit: false },
   render: { fov: 70, near: 0.03, far: 400 },
   input: { canvasPointerEvents: false },
   features: { locomotion: false, grabbing: false, physics: false, sceneUnderstanding: false, environmentRaycast: false, spatialUI: false },
