@@ -8,8 +8,15 @@ import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
 // bump this whenever the forest is re-exported, so headsets never keep showing an old saved copy
-export const FOREST_VERSION = 'fix4';
-export const EYE = new THREE.Vector3(0, 0.82, 0); // sitting right on the forest floor (a real seated-on-the-ground eye height), not on a chair
+export const FOREST_VERSION = 'seat1';
+// where your eyes are, set by where you are playing from (chosen on the start screen before you go in):
+//  - bed:   sitting cross-legged on the forest floor, eyes about 0.82 m up (the forest floor is your bed)
+//  - chair: sitting on a mossy stump, eyes about 1.2 m up (the forest floor is your room's floor)
+export const SEATS = { bed: 0.82, chair: 1.2 };
+export const EYE = new THREE.Vector3(0, SEATS.bed, 0);
+export function setSeat(seat) { EYE.y = SEATS[seat] || SEATS.bed; }
+// a height made for the bed (eyes at 0.82), moved to sit the same way relative to your eyes now
+export const atEye = (x, y, z) => new THREE.Vector3(x, y - SEATS.bed + EYE.y, z);
 export const shaderMats = []; // every material with a `time` uniform
 
 const twinkleVS = `

@@ -4,8 +4,8 @@
 // - perch(point) / rest(point): lands, slowly opening and closing its wings
 import * as THREE from 'three';
 import { glowTexture, damp } from './util.js';
+import { EYE } from './world.js';
 
-const EYE = new THREE.Vector3(0, 0.82, 0);
 const TRAIL = 48;
 
 function wingTexture() {

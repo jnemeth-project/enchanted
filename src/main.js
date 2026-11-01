@@ -3,7 +3,7 @@
 //   Fireflies  - a memory game that grows a level each night, then water your mushroom in the rain.
 //   Stargazing - the trees part overhead under a sky full of stars: count the stars home, or join them into pictures.
 import * as THREE from 'three';
-import { loadWorld, shaderMats, EYE } from './world.js';
+import { loadWorld, shaderMats, EYE, setSeat, atEye } from './world.js';
 import { Input, DesktopControls } from './input.js';
 import { Sound } from './audio.js';
 import { Effects } from './effects.js';
@@ -32,6 +32,7 @@ const DEBUG = params.has('debug');
 // Options chosen on the start screen (remembered on this device)
 const OPT_KEY = 'lightsout.options';
 const options = (() => { try { return { look: false, sit: false, bright: false, volume: 0.8, ...JSON.parse(localStorage.getItem(OPT_KEY) || '{}') }; } catch { return { look: false, sit: false, bright: false, volume: 0.8 }; } })();
+delete options.seatNow;   // (asked fresh every time: where you are tonight may not be where you were last time)
 if (params.get('mode') === 'sit') options.sit = true;
 if (params.has('look')) options.look = true;
 let JUST_SIT = options.sit;
@@ -164,7 +165,7 @@ async function init() {
   };
   eggs = new Eggs({ W, guide, sound, effects, say, touch, shelfLights,
     eye: eyePos, look: () => eyeRay().direction.clone(),
-    resumeGuide: () => { if (phase.name === 'relax' && !phase.mode) restGuide(); else guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 }); } });
+    resumeGuide: () => { if (phase.name === 'relax' && !phase.mode) restGuide(); else guide.goTo(atEye(-0.3, 0.95, -0.75), { speed: 0.9 }); } });
   if (options.voice) eggs.startVoice(sound.ctx);
   // a little surprise for anyone who tries to throw the jar away
   jar.onThrow = (at) => {
@@ -230,13 +231,13 @@ async function init() {
   choice.onPick = (k) => (k === 'bed' ? goToBed() : k === 'snooze' ? snooze() : startMode(k));
   ui.status.textContent = newNight ? `Night ${state.nights}` : `Night ${state.nights}, again`;
   const xrOK = navigator.xr && await navigator.xr.isSessionSupported('immersive-vr').catch(() => false);
-  ui.vr.disabled = !xrOK; ui.vr.textContent = xrOK ? 'Enter the forest' : 'Headset not found';
-  ui.screen.disabled = false;
+  loaded = { xr: !!xrOK }; ui.vr.textContent = xrOK ? 'Enter the forest' : 'Headset not found';
+  updateEnter();
   renderer.setAnimationLoop(loop);
 }
 
 function begin() {
-  readOptions();
+  readOptions(); applySeat();
   ui.overlay.classList.add('gone');
   sound.setVolume(options.muted ? 0 : options.volume);
   sound.start();
@@ -267,6 +268,39 @@ for (const b of document.querySelectorAll('#session button')) {
   b.addEventListener('click', () => { for (const x of document.querySelectorAll('#session button')) x.classList.toggle('on', x === b); options.session = +b.dataset.min; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} });
 }
 
+// where you are playing from: asked every time before you go in (a bed puts you down on the forest floor,
+// a chair on a mossy stump with the forest floor on your room's floor), so everything is within reach
+let loaded = null, seatApplied = null;
+function updateEnter() {
+  const ok = !!loaded && !!options.seatNow;
+  ui.vr.disabled = !ok || !loaded.xr; ui.screen.disabled = !ok;
+  const box = document.getElementById('seat'); if (box) box.classList.toggle('ask', !!loaded && !options.seatNow);
+}
+for (const b of document.querySelectorAll('#seat button')) b.addEventListener('click', () => {
+  for (const x of document.querySelectorAll('#seat button')) x.classList.toggle('on', x === b);
+  options.seatNow = b.dataset.seat; options.seat = b.dataset.seat; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {}
+  updateEnter();
+});
+function applySeat() {
+  const seat = options.seatNow || options.seat || 'bed'; setSeat(seat);
+  if (!renderer.xr.isPresenting) camera.position.copy(EYE);
+  if (seatApplied === seat) return; seatApplied = seat;
+  // the pot's stump grows to sit beside a chair at hand height (and back down for the bed)
+  const lift = seat === 'chair' ? 0.15 : 0, st = W && W.magic && W.magic.stump;
+  if (potGroup && st) {
+    const d = lift - (potGroup.userData.lift || 0); potGroup.userData.lift = lift;
+    if (!st.userData.h) { const bb = new THREE.Box3().setFromObject(st); st.userData.h = Math.max(0.05, bb.max.y - bb.min.y); st.userData.sy = st.scale.y; st.userData.y = st.position.y; st.userData.base = bb.min.y; }
+    potGroup.position.y += d;
+    // keep the stump's foot on the ground while its top rises with the pot
+    const k = (st.userData.h + lift) / st.userData.h; st.scale.y = st.userData.sy * k;
+    st.position.y = st.userData.y; potGroup.updateMatrixWorld(true);
+    const bb2 = new THREE.Box3().setFromObject(st); st.position.y += st.userData.base - bb2.min.y;
+    const sh = W.byName.G_Shadow_SeedStump; if (sh) sh.position.y = (sh.userData.y ??= sh.position.y) - lift;
+    if (seed && seed.target) seed.target.y += d;
+  }
+  if (sleepy && sleepy.setSeat) sleepy.setSeat(seat);
+}
+
 ui.vr.addEventListener('click', async () => {
   try {
     const session = await navigator.xr.requestSession('immersive-vr', { requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking'] });
@@ -292,12 +326,19 @@ function eyePos() { const v = new THREE.Vector3(); return renderer.xr.isPresenti
 function headTracked() {
   const head = new THREE.Vector3(); eyesCentre(head);
   const y = head.y - rig.position.y;
-  return y > 0.35 && y < 2.4; // a real head, sitting or standing, above the floor
+  // a real head, sitting or standing, above the floor (after a couple of seconds take whatever the headset says,
+  // so a headset whose floor is set wrong still puts you at the right height)
+  return (y > 0.35 && y < 2.4) || xrFrames > 150;
 }
 function recenter() {
   const head = new THREE.Vector3(); eyesCentre(head);
   const local = head.clone().sub(rig.position);
-  rig.position.set(-local.x, clamp(EYE.y - local.y, -0.8, 1.1), -local.z);
+  // on a chair the forest floor is your room's floor, so what you can reach in your room you can reach here
+  // (unless the headset's floor looks wrong, then your eyes go to the usual chair height);
+  // on a bed you sit on the forest floor, with your eyes 0.82 m above it
+  const chair = (options.seatNow || options.seat) === 'chair';
+  const y = chair && local.y > 0.95 && local.y < 1.5 ? 0 : EYE.y - local.y;
+  rig.position.set(-local.x, clamp(y, -0.8, 1.1), -local.z);
 }
 
 // Where the player is looking right now, a comfortable reading distance away.
@@ -319,11 +360,11 @@ function updatePhases(dt) {
   phase.t += dt;
   const P = phase.name;
   if (P === 'arrival') {
-    if (phase.t > 1.0 && !guide.group.visible) { guide.appear(sleep.homeOf(sleep.order[0])); guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 }); }
+    if (phase.t > 1.0 && !guide.group.visible) { guide.appear(sleep.homeOf(sleep.order[0])); guide.goTo(atEye(-0.3, 0.95, -0.75), { speed: 0.9 }); }
     if (JUST_SIT) { if (phase.t > 3) startMode('fireflies'); return; }
     // the very first night, the butterfly quietly boops a mushroom to show they make music (no words)
     const b = touch.items.find((it) => it.kind === 'boop');
-    if (TUTORIAL && phase.t > 3 && !phase.tapped && b && guide.mode !== 'tap') { phase.tapped = true; guide.tap(b.center, () => { b.flash = Math.max(b.flash, 0.6); sound.boop(b.center, b.hz); guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 }); }); }
+    if (TUTORIAL && phase.t > 3 && !phase.tapped && b && guide.mode !== 'tap') { phase.tapped = true; guide.tap(b.center, () => { b.flash = Math.max(b.flash, 0.6); sound.boop(b.center, b.hz); guide.goTo(atEye(-0.3, 0.95, -0.75), { speed: 0.9 }); }); }
     if (phase.t > (TUTORIAL ? 9 : 6)) greet();
   } else if (P === 'relax') {
     // just sitting in the forest: nothing asked of you. Near the end, the rain comes if your mushroom needs it
@@ -342,7 +383,7 @@ function updatePhases(dt) {
         say('Boop two fireflies\nthat share a colour', { hold: 4 });
         guide.tap(a.g.position.clone(), () => {
           flies.boop(a);
-          guide.tap(b.g.position.clone(), () => { flies.boop(b); state.memoryShown = true; saveState(state); guide.twirl(() => guide.goTo(new THREE.Vector3(-0.8, 0.72, -0.8), { orbit: 0.05, speed: 0.9 })); });
+          guide.tap(b.g.position.clone(), () => { flies.boop(b); state.memoryShown = true; saveState(state); guide.twirl(() => guide.goTo(atEye(-0.8, 0.72, -0.8), { orbit: 0.05, speed: 0.9 })); });
         });
       }
     }
@@ -388,7 +429,7 @@ function greet() {
   tweens.add(0.1, () => {}, { delay: 3.4, done: restGuide });
 }
 // the butterfly rests close by, a little in front and to the left at chest height, where you can reach out and boop it
-function restGuide() { guide.goTo(new THREE.Vector3(-0.3, 0.7, -0.42), { orbit: 0.03, speed: 0.5 }); }
+function restGuide() { guide.goTo(atEye(-0.3, 0.7, -0.42), { orbit: 0.03, speed: 0.5 }); }
 
 // From the menu: start a game (stopping whatever was going on), or stop it and go back to just sitting
 function playGame(mode, opts = {}) {
@@ -413,13 +454,13 @@ function startMode(mode) {
   const skyWasOpen = SKY(phase.mode);
   phase.mode = mode; phase.t = 0; phase.lastOutAt = 0; phase.shownOnce = false; phase.showing = false; phase.saidFlies = false; phase.wrapping = false;
   menu.mode = mode; if (things) things.setMode(mode);
-  if (guide.mode === 'tap') guide.goTo(new THREE.Vector3(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
+  if (guide.mode === 'tap') guide.goTo(atEye(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
   if (mode === 'sleepy') {
     phase.name = 'sleepy'; input.farHands = false;
     state.tutorialDone = true; saveState(state);
     sleepy.start();
     say('Watch which ones wake up', { hold: 2.6 });
-    guide.goTo(new THREE.Vector3(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 });
+    guide.goTo(atEye(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 });
     return;
   }
   if (mode === 'fireflies') {
@@ -444,13 +485,13 @@ function startMode(mode) {
 
     // if you lie down, the forest follows: re-centre once you have settled
     for (const d of [4, 10]) tweens.add(0.1, () => {}, { delay: d, done: () => gentleRecenter() });
-    guide.goTo(new THREE.Vector3(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 });
+    guide.goTo(atEye(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 });
   }
 }
 
 function onPairFound() {
   // your first pair (after the butterfly's): a little twirl of joy
-  if (flies.matched === 2 && !phase.praised) { phase.praised = true; if (guide.mode === 'hover') guide.twirl(() => guide.goTo(new THREE.Vector3(-0.8, 0.72, -0.8), { orbit: 0.05, speed: 0.9 })); }
+  if (flies.matched === 2 && !phase.praised) { phase.praised = true; if (guide.mode === 'hover') guide.twirl(() => guide.goTo(atEye(-0.8, 0.72, -0.8), { orbit: 0.05, speed: 0.9 })); }
   if (flies.pairs > 5 && flies.matched === flies.pairs - 1) say('One pair left', { hold: 2 });
 }
 
@@ -547,7 +588,7 @@ function goodnight() {
   seed.invite = false;
   // the butterfly says goodbye: it bows in front of you, then drifts up toward the moon with a trail of light
   const sky = EYE.clone().addScaledVector(W.moonDir || new THREE.Vector3(0, 0.9, -0.4), 22);
-  const front = SKY(phase.mode) ? ahead(0.5, 0) : new THREE.Vector3(0.05, 0.82, -0.42);
+  const front = SKY(phase.mode) ? ahead(0.5, 0) : atEye(0.05, 0.82, -0.42);
   phase.nightDone = false;
   tweens.add(0.1, () => {}, { delay: 2, done: () => { if (guide.group.visible) guide.farewell(front, sky, nightComplete); else nightComplete(); } });
   tweens.add(0.1, () => {}, { delay: 18, done: () => { if (phase.name === 'goodnight') nightComplete(); } }); // never wait forever for the butterfly
@@ -588,7 +629,7 @@ function snooze() {
   sleep.wakeAll(4); touch.dimBoops(1); sound.setAwake(1);
   if (W.canopy && W.canopy.uniform.value > 0.01) { const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); sky.stop(); }
   for (const c of seed.collection) for (const m of c.mats) if (m.userData.baseEmissive !== undefined) m.emissiveIntensity = m.userData.baseEmissive;
-  guide.appear(sleep.homeOf(sleep.order[0])); guide.goTo(new THREE.Vector3(-0.3, 0.95, -0.75), { speed: 0.9 });
+  guide.appear(sleep.homeOf(sleep.order[0])); guide.goTo(atEye(-0.3, 0.95, -0.75), { speed: 0.9 });
   say(session.snoozes >= MAX_SNOOZES ? 'Five more minutes\n(the last little while tonight)' : 'Five more minutes', { hold: 2.6 });
   phase.name = 'snoozing'; tweens.add(0.1, () => {}, { delay: 3.2, done: () => { phase.name = 'relax'; phase.t = 0; phase.wrapping = false; restGuide(); } });
 }
@@ -597,12 +638,12 @@ function snooze() {
 function sleepNext() { const G = sleep.order.length; if (phase.slept < G) sleep.putToSleep(sleep.order[phase.slept++]); }
 function onSkyCount(n) {
   if (n % 3 === 0) sleepNext();
-  if (n === 1) guide.twirl(() => guide.goTo(new THREE.Vector3(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 }));
+  if (n === 1) guide.twirl(() => guide.goTo(atEye(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 }));
 }
 function onShapeDone(name, k) {
   say(name, { width: 0.8, hold: 3 });
   sleepNext(); sleepNext();
-  if (k === 1) guide.twirl(() => guide.goTo(new THREE.Vector3(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 }));
+  if (k === 1) guide.twirl(() => guide.goTo(atEye(0.3, 1.6, -0.6), { orbit: 0.1, speed: 0.6 }));
 }
 
 // The night's length is a gentle guide, never a cut-off: while you are in the middle of a game, the time
@@ -636,7 +677,7 @@ function rimPoint() {
 function showRainDemo() {
   const above = seed.target.clone().add(new THREE.Vector3(0, 0.13, 0));
   guide.fillRate = 0.9;
-  guide.rainDemo(new THREE.Vector3(0.04, 0.76, -0.3), above, rimPoint(), () => {
+  guide.rainDemo(atEye(0.04, 0.76, -0.3), above, rimPoint(), () => {
     phase.demoEnd = phase.rainT;
     if (phase.firstNight && seed.state.stage === 0) seed.grow(); else seed.receiveWater(0);
   });

@@ -1,6 +1,7 @@
 // "What would you like tonight?" Two glowing lanterns float in front of you.
 // Touch one, pinch it, point at it, look at it (look-to-select) or click it.
 import * as THREE from 'three';
+import { EYE } from './world.js';
 import { glowTexture, tweens } from './util.js';
 
 function label(title, sub) {
@@ -29,7 +30,7 @@ export class Choice {
     this.group.clear(); this.options = [];
     opts.forEach((o, i) => {
       const a = OFFSET + (i - (opts.length - 1) / 2) * SPREAD * (opts.length === 2 ? 1.2 : 1);
-      const at = new THREE.Vector3(Math.sin(a) * DIST, Y, -Math.cos(a) * DIST);
+      const at = new THREE.Vector3(Math.sin(a) * DIST, Y - 0.82 + EYE.y, -Math.cos(a) * DIST);
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: o.color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
       halo.scale.setScalar(0.22 * S); halo.position.copy(at);
       const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));

@@ -32,6 +32,11 @@
   #session button { margin: 0; padding: 0.45rem 0.85rem; font-size: 1rem; min-width: 2.8rem; background: transparent; border-color: rgba(255,255,255,0.18); }
   #session button.on { background: rgba(143,245,212,0.18); border-color: rgba(143,245,212,0.7); }
   #session span { margin: 0 0.3rem; }
+  #seat { display: flex; align-items: center; justify-content: center; gap: 0.6rem; margin: 0 auto 1rem; flex-wrap: wrap; color: var(--soft); font-size: 1rem; }
+  #seat > span { width: 100%; text-align: center; }
+  #seat button { margin: 0; padding: 0.6rem 1.1rem; font-size: 1.05rem; background: transparent; border-color: rgba(255,255,255,0.22); }
+  #seat button.on { background: rgba(143,245,212,0.2); border-color: rgba(143,245,212,0.8); }
+  #seat.ask > span { color: #ffe3b0; }
   /* everything on one screen: on a wide window (like the headset's browser) the options sit beside the buttons */
   #overlay { overflow-y: auto; }
   @media (min-width: 760px) and (orientation: landscape) {
@@ -73,6 +78,8 @@
   <p>A quiet night in a glowing forest.<br>Sit comfortably. Your hands are all you need.</p>
   <div class="track"><div id="bar"></div></div>
   <div id="status">Gathering the forest…</div>
+  <div id="seat" role="group" aria-label="Where are you playing from?"><span>Where are you playing from?</span>
+    <button data-seat="chair">🪑 On a chair</button><button data-seat="bed">🛏️ On my bed</button></div>
   <div id="session" role="group" aria-label="Session length"><span>Stay for</span><button data-min="5">5</button><button data-min="10">10</button><button data-min="15">15</button><button data-min="20">20</button><span>minutes</span></div>
   <button id="enter-vr" disabled>Enter the forest</button>
   <div class="enter-note">Rest your pointer on any choice to pick it. Entering needs one pinch or click.</div>

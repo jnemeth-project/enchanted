@@ -4,12 +4,13 @@
 // of the forest sleeps with them. If not, they fade back to gold and wait. No timer, no score, no fail.
 import * as THREE from 'three';
 import { glowTexture, rand, clamp } from './util.js';
+import { EYE } from './world.js';
 
 const HIDDEN = new THREE.Color(1.0, 0.9, 0.62);    // plain firefly glow: pale gold, so every colour stands out from it
 const CORE = new THREE.Color(1.0, 0.98, 0.8);
 // the firefly model's lantern and wing hinge, from Blender's axes (x, y, z) into the game's (x, z, -y)
 const LANTERN = new THREE.Vector3(0, -0.0045, 0.0135), WING_HINGE = new THREE.Vector3(0.004, 0.0135, 0), BUTT = new THREE.Vector3(0, -0.0045, 0.0265);
-const VIEW = new THREE.Vector3(0, 0.82, 0); // where your eyes are: the fireflies face you
+const VIEW = EYE; // where your eyes are: the fireflies face you
 // six strong colours that are easy to tell apart at night. Each also has its own shape and its own note,
 // so a pair can be matched by colour, by shape or by sound (colour blind players included).
 export const COLOURS = [
@@ -51,7 +52,7 @@ function arcSlots(n) {
   const out = [];
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols && out.length < n; c++) {
     const a = THREE.MathUtils.degToRad(-span / 2 + span * (c + (r % 2 ? 0.5 : 0.25)) / cols);
-    out.push(new THREE.Vector3(Math.sin(a) * R + rand(-0.012, 0.012), ys[r] + rand(-0.012, 0.012), -Math.cos(a) * R));
+    out.push(new THREE.Vector3(Math.sin(a) * R + rand(-0.012, 0.012), ys[r] - 0.82 + EYE.y + rand(-0.012, 0.012), -Math.cos(a) * R));
   }
   return out;
 }

@@ -19,7 +19,7 @@ export class SleepyMushrooms {
     // moss with the mushrooms on top, at a height your hands can reach
     this.root = new THREE.Group(); this.root.visible = false; scene.add(this.root);
     this.mound = W.byName.G_SleepyMound || null;
-    if (this.mound) { this.root.attach(this.mound); this.mound.updateMatrixWorld(true); }
+    if (this.mound) { this.root.attach(this.mound); this.mound.updateMatrixWorld(true); this.moundSY = this.mound.scale.y; }
     this.list = []; this.active = false; this.seq = []; this.phase = 'idle'; this.t = 0; this.i = 0; this.rounds = 0; this.wrong = 0;
     this.onFirst = null; this.onRound = null;
   }
@@ -48,6 +48,10 @@ export class SleepyMushrooms {
     const cap = new THREE.Vector3(x, g.position.y + HEIGHT * 0.82, z);
     return { g, m, halo, mats, base, cap, r: Math.max(size.x, size.z) * s * 0.5, hz: NOTES[k], glow: 0, bounce: 0, grow: 0, inside: [false, false] };
   }
+
+  // the mound's height follows where you are playing from, so the caps are at your hands:
+  // about 45 cm up sitting on the bed (the forest floor), about 72 cm up beside a chair
+  setSeat(seat) { if (this.mound) { this.mound.scale.y = this.moundSY * (seat === 'chair' ? 1.43 : 0.79); this.mound.updateMatrixWorld(true); } }
 
   get running() { return this.active; }
 
