@@ -169,7 +169,8 @@ export class ThingsMenu {
   _boardHit(ray) {
     if (!this.board) return null;
     // (a generous target: anywhere on or around the little board counts, so a look from your seat opens it)
-    const d = ray.distanceToPoint(this.boardC); if (d > Math.max(0.24, this.boardR * 1.8)) return null;
+    // (only a look right at the board counts, not a glance past it on the way to the jar or the stick)
+    const d = ray.distanceToPoint(this.boardC); if (d > Math.max(0.11, this.boardR * 0.95)) return null;
     const t = this.boardC.clone().sub(ray.origin).dot(ray.direction); return t > 0 ? this.boardC.clone() : null;
   }
   pick(ray) {
@@ -183,7 +184,7 @@ export class ThingsMenu {
     const b = this._boardHit(ray);
     if (!b) this.needLeave = false;
     if (b && this.needLeave && !this.open) return null;
-    if (b) return { key: 'things:board:' + (this.open ? 'close' : 'open'), size: 0.14, dwell: 1.0, gazeNear: true, point: b, fire: () => (this.open ? this.close() : this.show(this.eye)) };
+    if (b) return { key: 'things:board:' + (this.open ? 'close' : 'open'), size: 0.1, dwell: this.open ? 1.5 : 2.6, gazeNear: true, point: b, fire: () => (this.open ? this.close() : this.show(this.eye)) };   // a slow, deliberate look to open
     return null;
   }
 
