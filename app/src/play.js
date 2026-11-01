@@ -262,7 +262,7 @@ export class Crystals {
         if (!h.present) { cr.inHand[i] = false; return; }
         let inside = false; for (let k = 0; k < 5 && !inside; k++) if (h.tips[k] && h.tips[k].distanceTo(cr.c) < cr.r) inside = true;
         // a flick: the hand brushing quickly past, close by
-        if (!inside && h.palm && (h.speed || 0) > 0.6 && h.palm.distanceTo(cr.c) < cr.r + 0.07) inside = true;
+        if (!inside && h.palm && (h.speed || 0) > 1.0 && h.palm.distanceTo(cr.c) < cr.r + 0.05) inside = true;   // (a real flick; lowering a hand to your lap doesn't count)
         if (inside && !cr.inHand[i]) this.light(cr);
         cr.inHand[i] = inside;
       });
@@ -314,7 +314,7 @@ export class PotHint {
 export class DirtDrawing {
   constructor(scene, W, sound, effects) {
     this.sound = sound; this.effects = effects;
-    this.w = 1.2; this.d = 0.8; this.centre = new THREE.Vector3(0, 0, -0.62); // reachable with a fingertip near you, and further out with the drawing stick
+    this.w = 1.2; this.d = 0.62; this.centre = new THREE.Vector3(0, 0, -0.86);   // (starting half a metre out, clear of your lap) // reachable with a fingertip near you, and further out with the drawing stick
     this.tools = []; this.toolLast = new Map(); // other things that draw: the drawing stick's tip
     // the drawing surface hugs the ground: a fine grid whose every point sits just on the path
     const ground = [W.byName.Ground].filter(Boolean), ray = new THREE.Raycaster();
@@ -369,7 +369,12 @@ export class DirtDrawing {
     input.hands.forEach((h, i) => {
       if (!h.present) { this.last[i] = null; this.prevPalm[i] = null; return; }
       const tip = h.index, inside = Math.abs(tip.x - this.centre.x) < this.w / 2 && Math.abs(tip.z - this.centre.z) < this.d / 2;
-      if (inside && tip.y < this._groundAt(tip) + 0.06) {
+      // only a deliberate drawing finger: the index fingertip right down on the earth, pointing (clearly lower
+      // than the middle finger), held there a moment. A hand resting in your lap never draws.
+      const pointing = !h.pinching && h.tips && h.tips[2] && tip.y < h.tips[2].y - 0.025;
+      const down = inside && pointing && tip.y < this._groundAt(tip) + 0.03;
+      h._dirtT = down ? (h._dirtT || 0) + dt : 0;
+      if (down && h._dirtT > 0.15) {
         const [u, v] = this._uv(tip), g = this.g;
         // a groove in the dirt, with a faint magical glow running along its bottom
         if (this.last[i]) this._line(this.last[i][0], this.last[i][1], u, v, tip);

@@ -78,24 +78,36 @@ export class WakeField {
 
 // ------------------------------------------------------------------ the waterfall: flowing water, rippling foam, its sound
 const WATER_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+const NOISE = `
+float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
+`;
+// clear water: a glassy blue-green sheet with fine streaks running down it, bright glints, thin at the sides,
+// a pale lip where it leaves the rock and a white froth where it meets the pond
 const WATER_FS = `uniform float time; varying vec2 vUv;
+${NOISE}
 void main(){
-  float u = vUv.x, v = vUv.y;          // v: 0 at the top of the ribbon (where it leaves the rock), 1 at the pond
-  float a = sin((v * 5.0 - time * 1.6) * 6.2832 + sin(u * 9.0 + v * 3.0) * 1.6) * 0.5 + 0.5;
-  float b = sin((v * 9.0 - time * 2.4) * 6.2832 + u * 14.0) * 0.5 + 0.5;
-  float line = smoothstep(0.62, 1.0, a) * 0.8 + smoothstep(0.8, 1.0, b) * 0.5;
-  float edge = smoothstep(0.0, 0.22, u) * smoothstep(1.0, 0.78, u);
-  float alpha = (0.32 + 0.45 * line) * edge * smoothstep(1.0, 0.95, v) * (0.85 + 0.15 * smoothstep(0.0, 0.08, v));
-  vec3 col = mix(vec3(0.42, 0.66, 0.82), vec3(0.92, 0.98, 1.0), clamp(line, 0.0, 1.0));
-  gl_FragColor = vec4(col * 1.35, min(1.0, alpha * 1.3));
+  float u = vUv.x, v = vUv.y;          // v: 0 at the top (the lip), 1 at the pond
+  float flow = v * 7.0 - time * 1.9;
+  float streak = vn(vec2(u * 26.0, flow)) * 0.6 + vn(vec2(u * 55.0, flow * 1.7)) * 0.4;
+  float glint = smoothstep(0.78, 0.98, vn(vec2(u * 40.0, flow * 2.3 + 3.0)));
+  float edge = smoothstep(0.0, 0.18, u) * smoothstep(1.0, 0.82, u);
+  float lip = smoothstep(0.12, 0.0, v), froth = smoothstep(0.8, 1.0, v);
+  vec3 deep = vec3(0.20, 0.45, 0.55), light = vec3(0.75, 0.93, 1.0);
+  vec3 col = mix(deep, light, streak * 0.75 + glint * 0.6 + lip * 0.5);
+  col = mix(col, vec3(0.95, 0.99, 1.0), froth * (0.5 + 0.5 * vn(vec2(u * 30.0, time * 3.0))));
+  float alpha = (0.30 + 0.38 * streak + 0.3 * glint + 0.3 * lip + 0.45 * froth) * edge * smoothstep(1.0, 0.97, v);
+  gl_FragColor = vec4(col * 1.25, clamp(alpha, 0.0, 1.0));
 }`;
 const FOAM_FS = `uniform float time; varying vec2 vUv;
+${NOISE}
 void main(){
-  float r = length(vUv - 0.5) * 2.0;
-  float rings = sin(r * 11.0 - time * 3.2) * 0.5 + 0.5;
-  float fizz = sin(atan(vUv.y - 0.5, vUv.x - 0.5) * 9.0 + time * 1.7 + r * 6.0) * 0.5 + 0.5;
-  float alpha = smoothstep(1.0, 0.25, r) * (0.25 + 0.4 * rings * (0.6 + 0.4 * fizz));
-  gl_FragColor = vec4(vec3(0.85, 0.95, 1.0) * 1.1, alpha);
+  vec2 c = vUv - 0.5; float r = length(c) * 2.0, a = atan(c.y, c.x);
+  float rings = smoothstep(0.55, 1.0, sin(r * 13.0 - time * 3.0) * 0.5 + 0.5);
+  float bubbles = smoothstep(0.62, 0.9, vn(vec2(a * 6.0, r * 9.0 - time * 1.4)));
+  float alpha = smoothstep(1.0, 0.2, r) * (0.18 + 0.35 * rings + 0.5 * bubbles * smoothstep(0.7, 0.1, r));
+  gl_FragColor = vec4(vec3(0.88, 0.97, 1.0) * 1.15, alpha);
 }`;
 
 export class Waterfall {
@@ -114,7 +126,29 @@ export class Waterfall {
     }
   }
   start() { this.sound.waterfall(this.at); }
-  update(dt, time, eye, dir) { this.u.time.value = time; this.sound.waterfallTick(dt, eye, dir); if (this.glow) this.glow.material.opacity = 0.3 + 0.06 * Math.sin(time * 1.7); }
+  // tiny droplets that hop up where the water meets the pond
+  _drops() {
+    if (this.dropsMade || !this.foam) return; this.dropsMade = true;
+    const c = new THREE.Box3().setFromObject(this.foam).getCenter(new THREE.Vector3()); this.foot = c;
+    const N = 28, pos = new Float32Array(N * 3); this.dd = [];
+    for (let i = 0; i < N; i++) this.dd.push({ t: Math.random(), dur: 0.5 + Math.random() * 0.4, v: new THREE.Vector3() });
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.dropPts = new THREE.Points(g, new THREE.PointsMaterial({ map: glowTexture(), color: 0xdff4ff, size: 0.035, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.dropPts.frustumCulled = false; this.glow.parent.add(this.dropPts);
+  }
+  update(dt, time, eye, dir) { this.u.time.value = time; this.sound.waterfallTick(dt, eye, dir); if (this.glow) this.glow.material.opacity = 0.3 + 0.06 * Math.sin(time * 1.7);
+    if (this.glow) this._drops();
+    if (this.dropPts) {
+      const a = this.dropPts.geometry.attributes.position;
+      this.dd.forEach((d, i) => {
+        d.t += dt / d.dur;
+        if (d.t >= 1) { d.t = 0; d.dur = 0.45 + Math.random() * 0.4; const ang = Math.random() * 6.283; d.v.set(Math.cos(ang) * 0.25, 0.9 + Math.random() * 0.6, Math.sin(ang) * 0.25); d.o = this.foot.clone().add(new THREE.Vector3(Math.cos(ang) * 0.08, 0.01, Math.sin(ang) * 0.08)); }
+        const tt = d.t * d.dur, o = d.o || this.foot;
+        a.setXYZ(i, o.x + d.v.x * tt, o.y + d.v.y * tt - 4.9 * tt * tt, o.z + d.v.z * tt);
+      });
+      a.needsUpdate = true;
+    }
+  }
 }
 
 // ------------------------------------------------------------------ the fairies (they live in the old lilac giant)
@@ -223,6 +257,80 @@ export class Fairies {
   }
 }
 
+// ------------------------------------------------------------------ the squirrels (one lives behind the window high on the door tree)
+export class Squirrels {
+  constructor(scene, W, sound, effects) {
+    this.scene = scene; this.sound = sound; this.effects = effects;
+    const get = (n) => W.byName[n];
+    this.model = get('G_SquirrelModel');
+    const pos = (n) => (get(n) ? get(n).getWorldPosition(new THREE.Vector3()) : null);
+    this.window = pos('G_SquirrelWindowSpot'); this.bell = pos('G_SquirrelBellSpot'); this.bellObj = get('G_SquirrelBell');
+    this.glass = []; const g = get('G_SquirrelWindowGlass');
+    if (g) g.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); m.material.emissive.setRGB(1.0, 0.72, 0.38); m.material.emissiveIntensity = 0; this.glass.push(m.material); } });
+    if (this.window) {
+      const toYou = new THREE.Vector3(-this.window.x, 0, -this.window.z).normalize();
+      this.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffc070, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+      this.halo.position.copy(this.window).addScaledVector(toYou, 0.4); this.halo.scale.setScalar(1.0); scene.add(this.halo);
+    }
+    this.list = [];
+    if (!this.model) return;
+    for (let i = 0; i < 3; i++) {
+      const sit = get('G_SquirrelSit_' + i); if (!sit) continue;
+      let trunk = null; try { const t = JSON.parse(sit.userData.trunk); trunk = { x: t[0], z: -t[1], r: t[2] }; } catch (e) {}
+      const body = this.model.clone(true); body.visible = true; body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); body.scale.setScalar(1);
+      body.traverse((m) => { m.visible = true; });
+      const gg = new THREE.Group(); gg.add(body); gg.visible = false; scene.add(gg);
+      this.list.push({ g: gg, body, sit: sit.getWorldPosition(new THREE.Vector3()), trunk, state: 'away', t: 0, next: rand(12, 30), ph: i * 2.1, home: i === 0 });
+    }
+  }
+  get ok() { return this.list.length > 0; }
+
+  // a later night: everyone is already out, and the window is lit
+  settle() { for (const m of this.glass) m.emissiveIntensity = 1.2; if (this.halo) this.halo.material.opacity = 0.55; this.list.forEach((s) => this._sit(s)); }
+  _sit(s) { s.state = 'sit'; s.t = 0; s.g.visible = true; s.g.position.copy(s.sit); s.g.scale.setScalar(1); }
+
+  // the bell rings: the window lights, the little squirrel peeps out and hops onto its ledge; the others appear
+  wake(onDone) {
+    tweens.add(1.2, (k) => { for (const m of this.glass) m.emissiveIntensity = 1.2 * k * k; if (this.halo) this.halo.material.opacity = 0.55 * k * k; }, { delay: 0.7 });
+    const home = this.list.find((s) => s.home);
+    if (home && this.window) tweens.add(0.1, () => {}, { delay: 2.0, done: () => {
+      home.g.visible = true; home.state = 'out'; home.t = 0; home.from = this.window.clone();
+      this.sound.chime(this.window.clone(), 587.33);
+    } });
+    this.list.filter((s) => !s.home).forEach((s, i) => tweens.add(0.1, () => {}, { delay: 3.5 + i * 0.8, done: () => {
+      this._sit(s); s.g.scale.setScalar(0.001); tweens.add(0.6, (k) => s.g.scale.setScalar(Math.max(0.001, k)));
+      if (this.effects) this.effects.sparkle(s.sit.clone(), 0xffd9a0, 8, 0.12);
+    } }));
+    tweens.add(0.1, () => {}, { delay: 5.5, done: () => onDone && onDone() });
+  }
+
+  update(dt, time, eye) {
+    for (const s of this.list) {
+      if (s.state === 'away') continue;
+      s.t += dt; const p = s.g.position;
+      if (s.state === 'out') {
+        // out of the window with a little hop down onto the ledge
+        const u = Math.min(1, s.t / 0.9), e = u * u * (3 - 2 * u);
+        p.copy(s.from).lerp(s.sit, e); p.y += Math.sin(u * Math.PI) * 0.12;
+        if (u >= 1) this._sit(s);
+      } else if (s.state === 'sit') {
+        p.copy(s.sit); p.y += Math.abs(Math.sin(time * 1.6 + s.ph)) * 0.004;
+        if (s.t > s.next && s.trunk) { s.state = 'scurry'; s.t = 0; s.next = rand(15, 35); }
+      } else if (s.state === 'scurry') {
+        // a quick run round the trunk and back: up and round, then back down to its seat
+        const T = 3.2, u = Math.min(1, s.t / T), k = Math.sin(u * Math.PI);
+        const a0 = Math.atan2(s.sit.z - s.trunk.z, s.sit.x - s.trunk.x), a = a0 + k * 1.6, R = s.trunk.r + 0.09;
+        p.set(s.trunk.x + Math.cos(a) * R, s.sit.y + k * 0.7, s.trunk.z + Math.sin(a) * R);
+        if (u >= 1) this._sit(s);
+      }
+      // it faces you while it sits, and the way it runs while it scurries
+      if (s.state === 'scurry' && s.trunk) { const out = new THREE.Vector3(p.x - s.trunk.x, 0, p.z - s.trunk.z).normalize(); s.body.lookAt(p.x + out.z, p.y + 0.5, p.z - out.x); }
+      else { s.body.lookAt(eye.x, p.y, eye.z); s.body.rotateY(Math.PI); s.body.rotateY(Math.sin(time * 0.7 + s.ph) * 0.25); }
+      if (s.state === 'scurry') s.body.rotateY(Math.PI);
+    }
+  }
+}
+
 // ------------------------------------------------------------------ the intro itself
 export class Intro {
   // ctx: { W, scene, sleep, guide, sound, effects, wake, fairies, say(text, opts), eyePos(), atEye(x, y, z), lights: [{ light, base }] }
@@ -255,6 +363,7 @@ export class Intro {
       { at: P(1.6, 0.9, -4.6), R: 6.5 },
       { at: P(6.4, 0.6, -2.4), R: 7 },
       { at: P(-3.4, 0.8, -2.6), R: 7 },
+      ...(c.squirrels && c.squirrels.ok && c.squirrels.window ? [{ at: c.squirrels.window.clone(), R: 6.5, squirrels: true }] : []),
       { at: giant, R: 7.5, fairies: true },
     ];
   }
@@ -282,16 +391,19 @@ export class Intro {
     const h = this.hops[this.hopI];
     if (!h) { this._finish(); return; }
     this.state = 'fly'; this.t = 0;
-    if (h.fairies && c.fairies && c.fairies.bell) {
-      // to the doorbell: it lands beside it and rings it
-      const bell = c.fairies.bell;
+    const home = h.fairies ? c.fairies : h.squirrels ? c.squirrels : null;
+    if (home && home.ok && home.bell) {
+      // to a doorbell: it lands beside it and rings it; the window lights and whoever lives there comes out
+      const bell = home.bell; this.rang = false;
       const ring = this.bellTap = () => {
         if (this.rang) return; this.rang = true;
         c.sound.doorbell(bell.clone());
-        if (c.fairies.bellObj) { const o = c.fairies.bellObj, r0 = o.rotation.z; tweens.add(1.6, (k) => { o.rotation.z = r0 + Math.sin(k * Math.PI * 5) * 0.25 * (1 - k); }); }
+        if (home.bellObj) { const o = home.bellObj, r0 = o.rotation.z; tweens.add(1.6, (k) => { o.rotation.z = r0 + Math.sin(k * Math.PI * 5) * 0.25 * (1 - k); }); }
         this._wakeAt(h, 0.6);
-        c.fairies.wake(() => this._finish());
-        tweens.add(0.1, () => {}, { delay: 2.2, done: () => c.guide.goTo(c.atEye(-0.3, 0.95, -0.75), { orbit: 0.05, speed: 1.6 }) });
+        if (h.fairies) {
+          home.wake(() => this._finish());
+          tweens.add(0.1, () => {}, { delay: 2.2, done: () => c.guide.goTo(c.atEye(-0.3, 0.95, -0.75), { orbit: 0.05, speed: 1.6 }) });
+        } else home.wake(() => { this.state = 'land'; this._nextHop(); });
       };
       this.bellAt = bell.clone().add(new THREE.Vector3(0, -0.03, 0));
       c.guide.tap(this.bellAt, ring);

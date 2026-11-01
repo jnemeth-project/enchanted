@@ -11,7 +11,8 @@ const FONT = '"Iowan Old Style", "Palatino Linotype", Georgia, serif';
 // swapping goes round the three games
 const NEXT_GAME = {
   fireflies: { key: 'hoops', title: 'Ring toss', sub: 'throw pebbles through the rings' },
-  hoops: { key: 'shapes', title: 'Star pictures', sub: 'lie back and enjoy' },
+  hoops: { key: 'seek', title: 'Hidden glow', sub: 'find the glowing thing' },
+  seek: { key: 'shapes', title: 'Star pictures', sub: 'lie back and enjoy' },
   count: { key: 'shapes', title: 'Star pictures', sub: 'lie back and enjoy' },
   shapes: { key: 'fireflies', title: 'Firefly memory', sub: 'find the matching colours' },
 };

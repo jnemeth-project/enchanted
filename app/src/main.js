@@ -23,7 +23,8 @@ import { Menu } from './menu.js';
 import { ThingsMenu } from './thingsmenu.js';
 import { SleepyMushrooms } from './sleepy.js';
 import { Hoops } from './hoops.js';
-import { WakeField, Waterfall, Fairies, Intro } from './intro.js';
+import { Seek } from './seek.js';
+import { WakeField, Waterfall, Fairies, Squirrels, Intro } from './intro.js';
 import { Pond } from './pond.js';
 import { ShootingStars } from './wishes.js';
 import { Eggs } from './eggs.js';
@@ -133,7 +134,7 @@ let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || 
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
 let potToldRain = false;
-let hoops, waterfall, fairies, wake, intro, INTRO = false, W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails, pond, shooting, eggs;
+let seek, hoops, waterfall, fairies, squirrels, wake, intro, INTRO = false, W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails, pond, shooting, eggs;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
   options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
@@ -193,11 +194,15 @@ async function init() {
   pond = new Pond(W, scene); pebbles.pond = pond;
   // the hoops game: rings of light in front of you to throw pebbles through (never inside a tree)
   hoops = new Hoops(scene, sound, effects); pebbles.hoops = hoops;
+  // Hidden glow: find the thing in a colour found nowhere else in the forest, just by resting your eyes on it
+  seek = new Seek(scene, W, sound, effects);
+  seek.onShow = (def) => say(`Find this ${def.name}\nhidden somewhere in the forest`, { hold: 4.2 });
+  seek.onFound = (def, n) => say(n === 1 ? 'You found it!' : ['Found it!', 'Well spotted!', 'There it is!'][n % 3], { hold: 2 });
   // the waterfall at the back of the pond, and the fairies who live in the old lilac giant
-  waterfall = new Waterfall(W, sound); fairies = new Fairies(scene, W, sound, effects);
+  waterfall = new Waterfall(W, sound); fairies = new Fairies(scene, W, sound, effects); squirrels = new Squirrels(scene, W, sound, effects);
   // the first night (or ?intro): the forest starts fast asleep, and wakes with the butterfly
   wake = new WakeField();
-  intro = new Intro({ W, scene, sleep, guide, sound, effects, wake, fairies, say, eyePos, atEye, lights: [W.hemi, W.moonLight].filter(Boolean).map((light) => ({ light, base: light.intensity })) });
+  intro = new Intro({ W, scene, sleep, guide, sound, effects, wake, fairies, squirrels, say, eyePos, atEye, lights: [W.hemi, W.moonLight].filter(Boolean).map((light) => ({ light, base: light.intensity })) });
   INTRO = !JUST_SIT && (params.has('intro') || !state.introDone);
   if (INTRO) wake.patch(W.root);
   intro.onDone = () => { state.introDone = true; saveState(state); if (things.halo) things.halo.visible = true; greet(); };
@@ -318,7 +323,7 @@ function begin() {
     // asleep: no lights, no night sounds, only the waterfall; the first touch brings the butterfly
     phase.name = 'intro'; intro.start(); if (things.halo) things.halo.visible = false;
     session.len += 90;   // (the intro doesn't eat into your chosen time)
-  } else fairies.settle();
+  } else { fairies.settle(); squirrels.settle(); }
   // a quiet arrival: no words at first, just the forest. The pot appears later, when the rain comes.
 }
 
@@ -410,7 +415,7 @@ function sinkNook(dt) {
 
 // Looking at the pebbles on the white tree's shelf (to your left) for a moment shows, once a night, a quiet note that
 // there are pebbles on your right too, by the pond: no turning from left to right to throw (easier on motion sickness)
-let noteLook = 0, noteShown = false;
+let noteLook = 0, noteShown = 0, noteAt = -999;   // (it can show again a little later, up to three times a night)
 // The fairy-light jar: hold it up in front of you and a line says what it is for (once a night)
 let jarTold = false, jarLook = 0;
 function jarHint(dt) {
@@ -421,14 +426,14 @@ function jarHint(dt) {
   if (jarLook > 0.6) { jarTold = true; say('Pick the fairy lights around you\nand place them in the jar', { hold: 4.5, at: e.clone().add(p.clone().sub(e).normalize().multiplyScalar(0.95)).add(new THREE.Vector3(0, 0.16, 0)), width: 0.42 }); }   // a comfortable way beyond the jar, never close to your eyes
 }
 function pebbleNote(dt) {
-  if (noteShown || !pebbles || phase.name === 'loading') return;
+  if (noteShown >= 3 || time - noteAt < 45 || !pebbles || phase.name === 'loading' || phase.name === 'intro' || (intro && intro.running)) return;
   const shelf = pebbles.list.filter((p) => !p.o.userData.on_rock);
   if (!shelf.length) return;
   const c = shelf.reduce((a, p) => a.add(p.home), new THREE.Vector3()).multiplyScalar(1 / shelf.length);
   const ray = eyeRay(); const near = ray.distanceToPoint(c) < 0.16 && ray.origin.distanceTo(c) < 1.6;
   noteLook = near ? noteLook + dt : Math.max(0, noteLook - dt * 2);
-  if (noteLook > 1.2) {
-    noteShown = true;
+  if (noteLook > 1.0) {
+    noteShown++; noteAt = time; noteLook = 0;
     { const e = eyePos(), toEye = e.clone().sub(c); toEye.y = 0; toEye.normalize();
       // just below the pebbles, on the shelf's brown wood (light words read clearly there), not too close to you
       say('If turning makes you feel queasy,\nthere are pebbles on your right too,\nnext to the pond', { hold: 5.5, at: c.clone().addScaledVector(toEye, 0.08).add(new THREE.Vector3(0, -0.13, 0)), width: 0.34 }); }
@@ -543,6 +548,11 @@ function updatePhases(dt) {
       phase.wrapping = true; sleepy.stop(); say('The little mushrooms are asleep', { hold: 2.6 });
       tweens.add(0.1, () => {}, { delay: 3, done: () => { if (phase.name !== 'goodnight') { if (needsWater() && remaining() > 40) startRain(); else goodnight(); } } });
     }
+  } else if (P === 'seek') {
+    if (remaining() < 80 && !phase.wrapping && !keepPlaying()) {
+      phase.wrapping = true; seek.stop(); say('Everything is tucked away again', { hold: 2.6 });
+      tweens.add(0.1, () => {}, { delay: 3, done: () => { if (phase.name !== 'goodnight') { if (needsWater() && remaining() > 40) startRain(); else goodnight(); } } });
+    }
   } else if (P === 'hoops') {
     if (remaining() < 80 && !phase.wrapping && !keepPlaying()) {
       phase.wrapping = true; hoops.stop(); say('The rings drift away', { hold: 2.6 });
@@ -588,6 +598,7 @@ function stopGame() {
   if (m === 'fireflies') { flies.dismiss(); sleep.quiet(1); touch.dimBoops(1); }
   if (m === 'sleepy') sleepy.stop();
   if (m === 'hoops') hoops.stop();
+  if (m === 'seek') seek.stop();
   if (SKY(m)) { sky.stop(); const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); tweens.add(0.1, () => {}, { delay: 4, done: () => gentleRecenter() }); }
   phase.mode = null; menu.mode = null; things.setMode(null); input.farHands = false;
   phase.name = 'relax'; phase.t = 0; phase.wrapping = false;
@@ -600,6 +611,15 @@ function startMode(mode) {
   phase.mode = mode; phase.t = 0; phase.lastOutAt = 0; phase.shownOnce = false; phase.showing = false; phase.saidFlies = false; phase.wrapping = false;
   menu.mode = mode; if (things) things.setMode(mode);
   if (guide.mode === 'tap') guide.goTo(atEye(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
+  if (mode === 'seek') {
+    phase.name = 'seek'; input.farHands = false;
+    state.tutorialDone = true; saveState(state);
+    seek.alwaysHum = !!options.guides;
+    seek.start(eyePos(), eyeRay().direction);
+    tweens.add(0.1, () => {}, { delay: 5.2, done: () => { if (phase.mode === 'seek' && seek.found === 0) say('Look around. When you see it,\nrest your eyes on it', { hold: 3.6 }); } });
+    guide.goTo(atEye(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 });
+    return;
+  }
   if (mode === 'hoops') {
     phase.name = 'hoops'; input.farHands = false;
     state.tutorialDone = true; saveState(state);
@@ -693,6 +713,7 @@ function swapMode(mode) {
   if (phase.name === 'rain') rain.stop();
   if (phase.mode === 'sleepy') sleepy.stop();
   if (phase.mode === 'hoops') hoops.stop();
+  if (phase.mode === 'seek') seek.stop();
   if (SKY(phase.mode) && !SKY(mode)) { sky.stop(); const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); }
   startMode(mode);
 }
@@ -854,7 +875,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('hoops'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ errors, intro, wake, fairies, waterfall, hoops, startMode, stopGame, world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
+  window.__lo = () => ({ seek, squirrels, errors, intro, wake, fairies, waterfall, hoops, startMode, stopGame, world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -931,12 +952,12 @@ function step(dt) {
     if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); pebbleNote(dt); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); pond.update(time, rain ? rain.level : 0); eggs.update(dt, input); waterfall.update(dt, time, eyePos(), eyeRay().direction); fairies.update(dt, time, eyePos()); intro.update(dt);
+    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); pebbleNote(dt); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); pond.update(time, rain ? rain.level : 0); eggs.update(dt, input); waterfall.update(dt, time, eyePos(), eyeRay().direction); fairies.update(dt, time, eyePos()); squirrels.update(dt, time, eyePos()); intro.update(dt);
     shooting.skyOpen = phase.mode === 'count' || phase.mode === 'shapes'; shooting.update(dt, eyePos(), eyeRay().direction); jar.update(dt, input, time); jarHint(dt); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
     things.update(dt, input, time, eyeRay());
-    hoops.update(dt, time); sleepy.update(dt, input, time); dirt.enabled = !sleepy.running; sinkNook(dt);
+    hoops.update(dt, time); seek.update(dt, time, eyePos(), eyeRay().direction); sleepy.update(dt, input, time); dirt.enabled = !sleepy.running; sinkNook(dt);
     if (phase.name !== 'goodnight') session.t += dt;
     sky.ownDwell = !gaze.enabled;
     sky.update(dt, time, input, renderer.xr.isPresenting ? 1.8 : renderer.domElement.height / 900);

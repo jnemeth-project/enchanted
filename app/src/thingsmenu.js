@@ -12,6 +12,7 @@ const GAMES = [
   { key: 'hoops', name: 'Ring toss', line: 'Throw a pebble through the glowing ring' },
   { key: 'shapes', name: 'Star pictures', line: 'Join the stars into a picture' },
   { key: 'sleepy', name: 'Sleepy mushrooms', line: 'Tap them in the order they glow' },
+  { key: 'seek', name: 'Hidden glow', line: 'Find the glowing thing hidden in the forest' },
 ];
 const CW = 1024, CH = 720, PW = 0.3, PH = PW * CH / CW;
 
@@ -26,6 +27,11 @@ function icon(g, k, x, y, s, col) {
     g.lineWidth = s * 0.07; g.beginPath(); g.ellipse(s * 0.06, -s * 0.02, s * 0.3, s * 0.36, 0, 0, Math.PI * 2); g.stroke();
     g.beginPath(); g.ellipse(-s * 0.02, s * 0.0, s * 0.08, s * 0.06, -0.3, 0, Math.PI * 2); g.fill();
     g.globalAlpha = 0.6; g.lineWidth = s * 0.04; g.setLineDash([s * 0.05, s * 0.06]); g.beginPath(); g.moveTo(-s * 0.42, s * 0.3); g.quadraticCurveTo(-s * 0.3, s * 0.02, -s * 0.12, s * 0.0); g.stroke(); g.setLineDash([]);
+  } else if (k === 'seek') {
+    // an eye with a little sparkle: finding by looking
+    g.beginPath(); g.moveTo(-s * 0.4, 0); g.quadraticCurveTo(0, -s * 0.34, s * 0.4, 0); g.quadraticCurveTo(0, s * 0.34, -s * 0.4, 0); g.closePath(); g.stroke();
+    g.beginPath(); g.arc(0, 0, s * 0.12, 0, Math.PI * 2); g.fill();
+    g.beginPath(); for (let i = 0; i < 8; i++) { const r = i % 2 ? s * 0.04 : s * 0.12, a = i * Math.PI / 4; g.lineTo(s * 0.32 + Math.sin(a) * r, -s * 0.3 - Math.cos(a) * r); } g.closePath(); g.fill();
   } else if (k === 'sleepy') {
     // a little mushroom with closed sleepy eyes
     g.beginPath(); g.ellipse(0, -s * 0.08, s * 0.4, s * 0.24, 0, Math.PI, 0); g.closePath(); g.fill();
@@ -62,7 +68,8 @@ export class ThingsMenu {
   // ---------------------------------------------------------------- the card
   _rects() {
     // three pictures across the top, the line and the button below
-    const items = GAMES.map((gm, i) => ({ key: gm.key, x: 28 + i * 244, y: 90, w: 236, h: 300 }));
+    const n = GAMES.length, gap = 8, w = Math.floor((CW - 56 - gap * (n - 1)) / n);
+    const items = GAMES.map((gm, i) => ({ key: gm.key, x: 28 + i * (w + gap), y: 90, w, h: 300 }));
     const button = { key: 'go', x: CW / 2 - 170, y: 520, w: 340, h: 130 };
     // fireflies: three buttons instead of Start, one for each size of game (12, 20 or 26 fireflies)
     const levels = [12, 20, 26].map((n, i) => ({ key: 'go' + n, n, x: CW / 2 - 330 + i * 230, y: 520, w: 200, h: 130 }));
