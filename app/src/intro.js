@@ -277,7 +277,7 @@ export class Squirrels {
     for (let i = 0; i < 3; i++) {
       const sit = get('G_SquirrelSit_' + i); if (!sit) continue;
       let trunk = null; try { const t = JSON.parse(sit.userData.trunk); trunk = { x: t[0], z: -t[1], r: t[2] }; } catch (e) {}
-      const body = this.model.clone(true); body.visible = true; body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); body.scale.setScalar(1);
+      const body = this.model.clone(true); body.visible = true; body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); body.scale.setScalar(1.4);   // (a touch bigger, so you can see them from your seat)
       body.traverse((m) => { m.visible = true; });
       const gg = new THREE.Group(); gg.add(body); gg.visible = false; scene.add(gg);
       this.list.push({ g: gg, body, sit: sit.getWorldPosition(new THREE.Vector3()), trunk, state: 'away', t: 0, next: rand(12, 30), ph: i * 2.1, home: i === 0 });
