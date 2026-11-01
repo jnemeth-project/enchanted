@@ -80,14 +80,14 @@ export class WakeField {
 const WATER_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
 const WATER_FS = `uniform float time; varying vec2 vUv;
 void main(){
-  float u = vUv.x, v = vUv.y;
-  float a = sin((v * 5.0 + time * 2.1) * 6.2832 + sin(u * 9.0 + v * 3.0) * 1.6) * 0.5 + 0.5;
-  float b = sin((v * 9.0 + time * 3.3) * 6.2832 + u * 14.0) * 0.5 + 0.5;
+  float u = vUv.x, v = vUv.y;          // v: 0 at the top of the ribbon (where it leaves the rock), 1 at the pond
+  float a = sin((v * 5.0 - time * 1.6) * 6.2832 + sin(u * 9.0 + v * 3.0) * 1.6) * 0.5 + 0.5;
+  float b = sin((v * 9.0 - time * 2.4) * 6.2832 + u * 14.0) * 0.5 + 0.5;
   float line = smoothstep(0.62, 1.0, a) * 0.8 + smoothstep(0.8, 1.0, b) * 0.5;
   float edge = smoothstep(0.0, 0.22, u) * smoothstep(1.0, 0.78, u);
-  float alpha = (0.32 + 0.45 * line) * edge * smoothstep(0.0, 0.05, v) * (0.85 + 0.15 * smoothstep(1.0, 0.92, v));
+  float alpha = (0.32 + 0.45 * line) * edge * smoothstep(1.0, 0.95, v) * (0.85 + 0.15 * smoothstep(0.0, 0.08, v));
   vec3 col = mix(vec3(0.42, 0.66, 0.82), vec3(0.92, 0.98, 1.0), clamp(line, 0.0, 1.0));
-  gl_FragColor = vec4(col * 0.85, alpha);
+  gl_FragColor = vec4(col * 0.95, alpha);
 }`;
 const FOAM_FS = `uniform float time; varying vec2 vUv;
 void main(){
@@ -108,7 +108,7 @@ export class Waterfall {
     const s = W.byName.G_WaterfallSound; this.at = s ? s.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(6.2, 0.2, -4.7);
   }
   start() { this.sound.waterfall(this.at); }
-  update(dt, time) { this.u.time.value = time; this.sound.waterfallTick(dt); }
+  update(dt, time, eye, dir) { this.u.time.value = time; this.sound.waterfallTick(dt, eye, dir); }
 }
 
 // ------------------------------------------------------------------ the fairies (they live in the old lilac giant)

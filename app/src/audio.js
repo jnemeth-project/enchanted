@@ -353,31 +353,38 @@ export class Sound {
     }
   }
 
-  // The little waterfall at the back of the pond: a soft, steady dribble (two layers of filtered noise that
-  // gently swell and ebb) with now and then a tiny low droplet. Placed at the waterfall, heard across the pond.
+  // The little waterfall at the back of the pond, like the water feature in a zen garden: a light, airy trickle
+  // with soft little bubbling blips of water dropping into water. Placed at the waterfall; it is a touch louder
+  // when you look towards it.
   waterfall(pos) {
     if (!this.enabled || this._wf) return;
     const ctx = this.ctx, t = ctx.currentTime;
-    const p = ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 3; p.rolloffFactor = 0.7;
+    const p = ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 2.5; p.rolloffFactor = 0.8;
     p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z; p.connect(this.master);
-    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.55, t + 3); g.connect(p);
-    const a = this._src(this.white, true), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1050; bp.Q.value = 0.9;
-    const ag = ctx.createGain(); ag.gain.value = 0.32; a.connect(bp); bp.connect(ag); ag.connect(g);
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.23; const lg = ctx.createGain(); lg.gain.value = 0.08; lfo.connect(lg); lg.connect(ag.gain);
-    const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 3.1; const lg2 = ctx.createGain(); lg2.gain.value = 0.05; lfo2.connect(lg2); lg2.connect(ag.gain);
-    const b = this._src(this.brown, true), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
-    const bg = ctx.createGain(); bg.gain.value = 0.5; b.connect(lp); lp.connect(bg); bg.connect(g);
-    a.start(t, Math.random() * 2); b.start(t, Math.random() * 2); lfo.start(t); lfo2.start(t);
-    this._wf = { p, g, next: 0.5 };
+    const look = ctx.createGain(); look.gain.value = 0.6; look.connect(p);           // follows where you look
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 3); g.connect(look);
+    // the thin sheet of water: airy, high and quiet, gently wavering
+    const a = this._src(this.white, true), hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2200;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6500;
+    const ag = ctx.createGain(); ag.gain.value = 0.05; a.connect(hp); hp.connect(lp); lp.connect(ag); ag.connect(g);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.37; const lg = ctx.createGain(); lg.gain.value = 0.015; lfo.connect(lg); lg.connect(ag.gain);
+    a.start(t, Math.random() * 2); lfo.start(t);
+    this._wf = { p, g, look, next: 0.2 };
   }
-  waterfallTick(dt) {
+  waterfallTick(dt, eye, dir) {
     const w = this._wf; if (!w) return;
-    w.next -= dt; if (w.next > 0) return;
-    w.next = 0.12 + Math.random() * 0.45;
     const ctx = this.ctx, t = ctx.currentTime;
-    const o = ctx.createOscillator(); o.type = 'sine'; const f = 420 + Math.random() * 380;
-    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.62, t + 0.09);
-    const g = ctx.createGain(); this._env(g, t, 0.006, 0.035 + Math.random() * 0.03, 0.12); o.connect(g); g.connect(w.g); o.start(t); o.stop(t + 0.2);
+    if (eye && dir) {
+      const dx = w.p.positionX.value - eye.x, dy = w.p.positionY.value - eye.y, dz = w.p.positionZ.value - eye.z, L = Math.hypot(dx, dy, dz) || 1;
+      const facing = Math.max(0, (dx * dir.x + dy * dir.y + dz * dir.z) / L);
+      w.look.gain.setTargetAtTime(0.45 + 0.75 * facing * facing, t, 0.4);
+    }
+    // little bubbling drops: a soft rising "blip", a few a second, in small clusters
+    w.next -= dt; if (w.next > 0) return;
+    w.next = Math.random() < 0.3 ? 0.05 + Math.random() * 0.06 : 0.12 + Math.random() * 0.3;
+    const o = ctx.createOscillator(); o.type = 'sine'; const f = 520 + Math.random() * 520;
+    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * (1.35 + Math.random() * 0.4), t + 0.05);
+    const g = ctx.createGain(); this._env(g, t, 0.004, 0.018 + Math.random() * 0.022, 0.07); o.connect(g); g.connect(w.g); o.start(t); o.stop(t + 0.12);
   }
   // how much of the forest's night chorus is heard (0..1); the first night's intro brings it in step by step
   setAmbience(k, tc = 2) {
