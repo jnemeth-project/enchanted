@@ -219,6 +219,21 @@ export class Sound {
     n.connect(lp); lp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.4);
   }
 
+  // A bubble mushroom wobbling: a round, bouncy "boing" whose pitch wobbles and settles, like jelly
+  jelly(pos, baseHz = 160) {
+    if (!this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(baseHz * 0.8, t); o.frequency.exponentialRampToValueAtTime(baseHz, t + 0.06);
+    const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.setValueAtTime(9, t); lfo.frequency.linearRampToValueAtTime(5, t + 0.7);
+    const depth = ctx.createGain(); depth.gain.setValueAtTime(baseHz * 0.22, t); depth.gain.exponentialRampToValueAtTime(baseHz * 0.01, t + 0.75);
+    lfo.connect(depth); depth.connect(o.frequency);
+    const og = ctx.createGain(); this._env(og, t, 0.01, 0.75, 0.7); o.connect(og); og.connect(out);
+    const h = ctx.createOscillator(); h.type = 'triangle'; h.frequency.setValueAtTime(baseHz * 2, t); depth.connect(h.frequency);
+    const hg = ctx.createGain(); this._env(hg, t, 0.01, 0.22, 0.5); h.connect(hg); hg.connect(out);
+    for (const x of [o, lfo, h]) { x.start(t); x.stop(t + 0.9); }
+  }
+
   // A pebble skipping off the water: a tiny bright "plip"
   plip(pos) {
     if (!this.enabled) return;

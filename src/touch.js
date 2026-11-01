@@ -28,6 +28,12 @@ export class Touch {
       o.traverse((m) => { if (m.isMesh && m.material.emissive) col.copy(m.material.emissive); });
       this.items.push({ kind: 'puff', o, ...s, spring: new Spring(110, 7), inside: [false, false], cool: 0, base: o.scale.clone(), color: col });
     }
+    // bubble mushrooms: round and plump; a boop sets them wobbling like jelly for a couple of seconds
+    for (const o of W.bubbles || []) {
+      const s = worldSphere(o, { cap: true, shrink: 0.95 }), mats = [];
+      o.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); m.material.userData.e0 = m.material.emissiveIntensity ?? 1; mats.push(m.material); } });
+      this.items.push({ kind: 'jelly', o, ...s, spring: new Spring(48, 2.0), lean: new Spring(30, 2.4), flash: 0, inside: [false, false], cool: 0, base: o.scale.clone(), mats, hz: 140 + Math.random() * 60 });
+    }
     for (const o of W.dandelions) {
       const box = new THREE.Box3().setFromObject(o);
       const c = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y - 0.08, (box.min.z + box.max.z) / 2);
@@ -61,6 +67,11 @@ export class Touch {
       this.sound.boop(it.center, it.hz);
       this._recolor(it);
       if (it.toColor) { const top = new THREE.Vector3(it.center.x, it.box ? it.box.max.y : it.center.y, it.center.z); this.effects.sparkle(top, it.toColor.getHex(), 40, 0.2); this.effects.sparkle(top, 0xffffff, 14, 0.1); }
+    } else if (it.kind === 'jelly') {
+      const v = hand ? hand.palmVel : new THREE.Vector3(0, -0.5, 0);
+      it.spring.kick(-3.4 - Math.min(2, v.length() * 2)); it.lean.kick((v.x - v.z) * 3); it.flash = 1; it.cool = 0.4;
+      this.sound.jelly(it.center, it.hz);
+      this.effects.sparkle(new THREE.Vector3(it.center.x, it.box.max.y, it.center.z), 0xfff0fa, 14, 0.08);
     } else if (it.kind === 'fern') {
       const v = hand ? hand.palmVel : new THREE.Vector3(0.5, 0, 0);
       const speed = Math.min(1.5, v.length());
@@ -116,6 +127,13 @@ export class Touch {
       } else if (it.kind === 'fern') {
         const ax = it.sx.update(dt), az = it.sz.update(dt);
         it.o.rotation.set(it.rot.x + ax * 0.12, it.rot.y, it.rot.z + az * 0.12);
+      } else if (it.kind === 'jelly') {
+        // squash and stretch (keeping its volume), with a soft sideways sway: a wobbly, bouncy bubble
+        const x = it.spring.update(dt), l = it.lean.update(dt); it.flash *= Math.exp(-dt * 2.2);
+        const sy = 1 + x * 0.32, sxz = 1 / Math.sqrt(Math.max(0.5, sy));
+        it.o.scale.set(it.base.x * sxz, it.base.y * sy, it.base.z * sxz);
+        it.o.rotation.z = l * 0.1; it.o.rotation.x = l * 0.06;
+        for (const m of it.mats) m.emissiveIntensity = m.userData.e0 * (1 + it.flash * 2.5);
       } else if (it.kind === 'puff') {
         const x = it.spring.update(dt);
         it.o.scale.set(it.base.x * (1 - x * 0.12), it.base.y * (1 + x * 0.25), it.base.z * (1 - x * 0.12));
@@ -187,6 +205,9 @@ export class Touch {
     const y = Math.min(A.height - 1, Math.max(0, Math.floor((flip ? 1 - vy : vy) * A.height)));
     return A.data[(y * A.width + x) * 4 + 3] > 100;
   }
+
+  // where things are may have moved (the reach rocks grow for the chair): measure again
+  refresh() { for (const it of this.items) if (it.kind === 'jelly' || it.kind === 'boop') { const s = worldSphere(it.o, { cap: true, shrink: it.kind === 'jelly' ? 0.95 : 0.85 }); it.center = s.center; it.radius = s.radius; it.box = s.box; } }
 
   dimBoops(k) { for (const it of this.items) if (it.kind === 'boop') it.dim = k; }
 }

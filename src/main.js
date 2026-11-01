@@ -299,6 +299,18 @@ function applySeat() {
     if (seed && seed.target) seed.target.y += d;
   }
   if (sleepy && sleepy.setSeat) sleepy.setSeat(seat);
+  // the mossy rocks within reach: taller beside a chair, with their crystals and bubble mushrooms lifted with them
+  const k = seat === 'chair' ? 2.1 : 1.0;
+  for (const r of W.reachRocks || []) {
+    const top = r.userData.rock_top || 0.3, side = r.userData.side;
+    if (r.userData.sy0 === undefined) r.userData.sy0 = r.scale.y;
+    const lift = top * (k - 1) - (r.userData.lift || 0); r.userData.lift = top * (k - 1);
+    r.scale.y = r.userData.sy0 * k;
+    for (const o of [...(W.crystals || []), ...(W.bubbles || [])]) if (o.userData.on_rock === side) o.position.y += lift;
+  }
+  scene.updateMatrixWorld(true);
+  if (touch && touch.refresh) touch.refresh();
+  if (crystals && crystals.refresh) crystals.refresh();
 }
 
 ui.vr.addEventListener('click', async () => {

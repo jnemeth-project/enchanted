@@ -8,7 +8,7 @@ import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
 // bump this whenever the forest is re-exported, so headsets never keep showing an old saved copy
-export const FOREST_VERSION = 'plants8';
+export const FOREST_VERSION = 'reach1';
 // where your eyes are, set by where you are playing from (chosen on the start screen before you go in):
 //  - bed:   sitting cross-legged on the forest floor, eyes about 0.82 m up (the forest floor is your bed)
 //  - chair: sitting on a mossy stump, eyes about 1.2 m up (the forest floor is your room's floor)
@@ -162,7 +162,7 @@ export async function loadWorld(scene, onProgress) {
 
   // Index everything by its role.
   const W = {
-    root, byName: {}, clusters: [], dust: [], ribbons: [], pebbles: [], crystals: [], knock: [], jar: null, stick: null, boops: [], ferns: [], puffs: [], dandelions: [], dandelionSeeds: [],
+    root, byName: {}, bubbles: [], reachRocks: [], clusters: [], dust: [], ribbons: [], pebbles: [], crystals: [], knock: [], jar: null, stick: null, boops: [], ferns: [], puffs: [], dandelions: [], dandelionSeeds: [],
     magic: {}, dim: {}, grounds: [], sky: null, moon: {}, seat: new THREE.Vector3(),
   };
   const nodes = [];
@@ -181,6 +181,8 @@ export async function loadWorld(scene, onProgress) {
     else if (n.startsWith('Boop_')) W.boops.push(o);
     else if (n.startsWith('Touch_Fern')) W.ferns.push(o);
     else if (n.startsWith('G_Puffball_')) W.puffs.push(o);
+    else if (n.startsWith('G_Bubble_')) W.bubbles.push(o);
+    else if (n.startsWith('G_ReachRock_')) W.reachRocks.push(o);
     else if (/^G_Dandelion_\d+$/.test(n)) W.dandelions.push(o);
     else if (n.startsWith('G_DandelionSeeds_')) W.dandelionSeeds.push(o);
     if (ud.start_hidden) o.visible = false;

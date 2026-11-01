@@ -228,8 +228,15 @@ export class Crystals {
     if (cr.glow > 0.6) return;
     cr.glow = 1;
     this.sound.chime(cr.c, cr.hz);
-    if (this.effects) this.effects.sparkle(cr.c.clone().add(new THREE.Vector3(0, 0.06, 0)), 0xffd6f4, 26, 0.12);
+    if (this.effects) {
+      const top = cr.c.clone().add(new THREE.Vector3(0, 0.06, 0));
+      this.effects.sparkle(top, 0xffd6f4, 30, 0.12);
+      this.effects.spores(top, 0xfff1fa, 34);           // fairy dust drifting up from it
+      this.effects.sparkle(top, 0xcffff0, 16, 0.2);
+    }
   }
+  // where the crystals are may have moved (the reach rocks grow for the chair): measure again
+  refresh() { for (const cr of this.list) { const box = new THREE.Box3().setFromObject(cr.o); cr.c = box.getCenter(new THREE.Vector3()); } }
 
   pick(ray) {
     for (const cr of this.list) if (ray.distanceToPoint(cr.c) < cr.r) return { key: cr, size: cr.r, handsOnly: true, point: cr.c.clone(), fire: () => this.light(cr) };
@@ -240,7 +247,9 @@ export class Crystals {
     for (const cr of this.list) {
       input.hands.forEach((h, i) => {
         if (!h.present) { cr.inHand[i] = false; return; }
-        let inside = false; for (let k = 0; k < 5 && !inside; k++) if (h.tips[k].distanceTo(cr.c) < cr.r) inside = true;
+        let inside = false; for (let k = 0; k < 5 && !inside; k++) if (h.tips[k] && h.tips[k].distanceTo(cr.c) < cr.r) inside = true;
+        // a flick: the hand brushing quickly past, close by
+        if (!inside && h.palm && (h.speed || 0) > 0.6 && h.palm.distanceTo(cr.c) < cr.r + 0.07) inside = true;
         if (inside && !cr.inHand[i]) this.light(cr);
         cr.inHand[i] = inside;
       });
