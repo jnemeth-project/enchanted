@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enchanted</title>
+<style>
+  :root { --ink: #efe9ff; --soft: #b9b0d6; --mint: #8ff5d4; --pink: #ffa6d8; --bg: #07060d; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; overflow: hidden; }
+  canvas { display: block; }
+  #overlay { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 40%, #1a1430 0%, #07060d 70%); transition: opacity 1.6s ease; z-index: 10; }
+  #overlay.gone { opacity: 0; pointer-events: none; }
+  .card { text-align: center; max-width: 30rem; padding: 2rem 1.5rem; }
+  h1 { font-weight: 400; font-size: clamp(2.4rem, 7vw, 3.6rem); letter-spacing: 0.04em; margin: 0 0 0.6rem; text-shadow: 0 0 24px rgba(143,245,212,0.35); }
+  p { color: var(--soft); line-height: 1.55; margin: 0 0 1.6rem; font-size: 1.05rem; }
+  .track { height: 3px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; margin: 0 auto 1.6rem; width: 70%; }
+  #bar { height: 100%; width: 0; background: linear-gradient(90deg, var(--mint), var(--pink)); transition: width 0.3s; }
+  #status { color: var(--soft); font-size: 0.9rem; min-height: 1.2em; margin-bottom: 1.4rem; font-style: italic; }
+  button { font: inherit; font-size: 1.05rem; color: var(--ink); background: rgba(143,245,212,0.08); border: 1px solid rgba(143,245,212,0.35); border-radius: 999px; padding: 0.8rem 1.6rem; margin: 0.35rem; cursor: pointer; transition: background 0.3s, border-color 0.3s; }
+  button:hover:not(:disabled) { background: rgba(143,245,212,0.16); border-color: rgba(143,245,212,0.6); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.quiet { background: transparent; border-color: rgba(255,255,255,0.18); }
+  button.small { font-size: 0.9rem; padding: 0.55rem 1.2rem; display: block; margin: 0.6rem auto 0; }
+  .opts { display: grid; gap: 0.55rem; text-align: left; margin: 1.6rem auto 0; max-width: 21rem; font-size: 0.95rem; color: var(--soft); }
+  .opts label { display: flex; align-items: center; gap: 0.7rem; cursor: pointer; line-height: 1.35; }
+  .opts input[type=checkbox] { width: 1.15rem; height: 1.15rem; accent-color: #8ff5d4; flex: none; }
+  .opts .vol { display: flex; align-items: center; gap: 0.7rem; }
+  .opts input[type=range] { flex: 1; accent-color: #8ff5d4; }
+  .opts small { display: block; color: #8d85ad; font-size: 0.8rem; }
+  .foot { margin-top: 1.6rem; font-size: 0.85rem; color: #8d85ad; }
+  #session { display: flex; align-items: center; justify-content: center; gap: 0.4rem; margin: 0 auto 1.2rem; color: var(--soft); font-size: 0.95rem; flex-wrap: wrap; }
+  #session button { margin: 0; padding: 0.45rem 0.85rem; font-size: 1rem; min-width: 2.8rem; background: transparent; border-color: rgba(255,255,255,0.18); }
+  #session button.on { background: rgba(143,245,212,0.18); border-color: rgba(143,245,212,0.7); }
+  #session span { margin: 0 0.3rem; }
+  #seat { display: flex; align-items: center; justify-content: center; gap: 0.6rem; margin: 0 auto 1rem; flex-wrap: wrap; color: var(--soft); font-size: 1rem; }
+  #seat > span { width: 100%; text-align: center; }
+  #seat button { margin: 0; padding: 0.6rem 1.1rem; font-size: 1.05rem; background: transparent; border-color: rgba(255,255,255,0.22); }
+  #seat button.on { background: rgba(143,245,212,0.2); border-color: rgba(143,245,212,0.8); }
+  #seat.ask > span { color: #ffe3b0; }
+  /* everything on one screen: on a wide window (like the headset's browser) the options sit beside the buttons */
+  #overlay { overflow-y: auto; }
+  @media (min-width: 760px) and (orientation: landscape) {
+    .card { max-width: 60rem; display: grid; grid-template-columns: 1fr 1fr; column-gap: 3rem; align-items: center; padding: 1rem 1.5rem; }
+    .card > * { grid-column: 1; }
+    .card > .opts { grid-column: 2; grid-row: 1 / span 9; margin: 0; max-width: none; }
+    .card > .foot { grid-column: 2; margin-top: 0.8rem; }
+  }
+  @media (max-height: 820px) {
+    h1 { font-size: clamp(2rem, 6vh, 3rem); margin-bottom: 0.3rem; }
+    p { margin-bottom: 0.9rem; font-size: 0.98rem; }
+    .track { margin-bottom: 0.8rem; } #status { margin-bottom: 0.7rem; } #session { margin-bottom: 0.6rem; }
+    button { padding: 0.6rem 1.3rem; margin: 0.25rem; }
+    .opts { gap: 0.4rem; font-size: 0.9rem; } .foot { margin-top: 0.8rem; }
+  }
+  /* hover to choose: rest the pointer on a choice and a ring fills around it; when it is full, it is chosen */
+  .dwell { position: relative; }
+  .dwell::after { content: ''; position: absolute; inset: -5px; border-radius: 999px; pointer-events: none; opacity: 0; transition: opacity 0.2s;
+    background: conic-gradient(rgba(143,245,212,0.9) calc(var(--dwell, 0) * 1turn), transparent 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); }
+  .opts label.dwell::after { border-radius: 0.7rem; -webkit-mask: none; mask: none; background: linear-gradient(90deg, rgba(143,245,212,0.16) calc(var(--dwell, 0) * 100%), transparent 0); inset: -3px -6px; }
+  .dwell.dwelling::after { opacity: 1; }
+  .opts .group { font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: #8ff5d4; opacity: 0.8; margin-top: 0.35rem; }
+  .opts em { font-style: normal; color: #8ff5d4; }
+  .enter-note { font-size: 0.8rem; color: #8d85ad; margin: 0.1rem 0 0.4rem; }
+  #hint { position: fixed; bottom: 1.4rem; left: 50%; transform: translateX(-50%); color: var(--soft); font-size: 0.95rem; opacity: 0; transition: opacity 1.2s; pointer-events: none; }
+  #hint.show { opacity: 0.85; }
+</style>
+</head>
+<body>
+<div id="overlay"><div class="card">
+  <h1>Enchanted</h1>
+  <p>A quiet night in a glowing forest.<br>Sit comfortably. Your hands are all you need.</p>
+  <div class="track"><div id="bar"></div></div>
+  <div id="status">Gathering the forest…</div>
+  <div id="seat" role="group" aria-label="Where are you playing from?"><span>Where are you playing from?</span>
+    <button data-seat="chair">🪑 On a chair</button><button data-seat="bed">🛏️ On my bed</button></div>
+  <div id="session" role="group" aria-label="Session length"><span>Stay for</span><button data-min="5">5</button><button data-min="10">10</button><button data-min="15">15</button><button data-min="20">20</button><span>minutes</span></div>
+  <button id="enter-vr" disabled>Enter the forest</button>
+  <div class="enter-note">Rest your pointer on any choice to pick it. Entering needs one pinch or click.</div>
+  <button id="enter-screen" class="quiet" disabled>Look around on this screen</button>
+  <button id="how-to" class="quiet small">Show me how to play</button>
+  <div class="opts" role="group" aria-label="Options">
+    <div class="group">Play</div>
+    <label><input type="checkbox" id="opt-sit"><span>Just sit<small>No tasks: the forest falls asleep on its own</small></span></label>
+    <label><input type="checkbox" id="opt-voice"><span>Sing to the mushrooms<small>Hum or talk softly and the mushrooms near you glow along (uses the microphone)</small></span></label>
+    <div class="group">Comfort</div>
+    <label><input type="checkbox" id="opt-calm"><span>Calm motion <em>(for motion sickness)</em><small>Softly darkened edges, slower movement, gentler rain, no sudden jumps</small></span></label>
+    <div class="group">Seeing</div>
+    <label><input type="checkbox" id="opt-large"><span>Large text<small>Bigger words on a dark backing, shown for longer</small></span></label>
+    <label><input type="checkbox" id="opt-speak"><span>Read aloud<small>The words that appear are spoken to you</small></span></label>
+    <label><input type="checkbox" id="opt-guides"><span>Sound guides<small>Things you can touch hum softly as your hand gets near</small></span></label>
+    <label><input type="checkbox" id="opt-outlines"><span>Clear outlines<small>A bright edge around everything you can touch</small></span></label>
+    <label><input type="checkbox" id="opt-bright"><span>Brighter glow<small>Larger fireflies and brighter things to touch</small></span></label>
+    <div class="vol"><span>Volume</span><input type="range" id="opt-volume" min="0" max="1" step="0.05" value="0.8" aria-label="Volume"></div>
+  </div>
+  <div class="foot">Best with headphones. Everything works with one hand.</div>
+</div></div>
+<div id="hint">Drag to look around · Click to touch</div>
+<div id="scene-container"></div>
+<script type="module" src="./src/main.js"></script>
+<script>
+// Hover to choose (on the landing page): resting the pointer on a choice for a moment picks it, no pinch needed.
+// Starting VR itself still needs one real pinch or click: browsers only allow that after a deliberate action.
+(() => {
+  const DWELL = 1.6;
+  const targets = () => [...document.querySelectorAll('.opts label, #how-to')];
+  for (const el of targets()) {
+    el.classList.add('dwell');
+    let t0 = 0, raf = 0;
+    const stop = () => { cancelAnimationFrame(raf); raf = 0; el.classList.remove('dwelling'); el.style.setProperty('--dwell', 0); };
+    const tick = (now) => {
+      const k = Math.min(1, (now - t0) / (DWELL * 1000));
+      el.style.setProperty('--dwell', k);
+      if (k >= 1) { stop(); el.click(); t0 = 0; return; }
+      raf = requestAnimationFrame(tick);
+    };
+    el.addEventListener('pointerenter', () => { if (el.disabled) return; t0 = performance.now(); el.classList.add('dwelling'); raf = requestAnimationFrame(tick); });
+    el.addEventListener('pointerleave', stop);
+    el.addEventListener('click', () => { if (raf) stop(); });
+  }
+})();
+</script>
+</body>
+</html>
