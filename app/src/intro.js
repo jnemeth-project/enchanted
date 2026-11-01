@@ -125,6 +125,11 @@ export class Fairies {
     this.rests = [0, 1, 2, 3].map((i) => get('G_FairyRest_' + i)).filter(Boolean).map((o) => o.getWorldPosition(new THREE.Vector3()));
     this.glass = []; const g = get('G_FairyWindowGlass');
     if (g) g.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); m.material.emissive.setRGB(1.0, 0.72, 0.38); m.material.emissiveIntensity = 0; this.glass.push(m.material); } });
+    // a warm glow in front of the window when it is lit, so you can see the light come on from where you sit
+    if (this.window) {
+      this.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffc070, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+      this.halo.position.copy(this.window); this.halo.scale.setScalar(1.1); scene.add(this.halo);
+    }
     // the giant's stem: the fairies twirl round it
     this.axis = this.window ? new THREE.Vector3(this.window.x, 0, this.window.z) : null;
     if (this.window) { const out = new THREE.Vector3(this.window.x, 0, this.window.z).normalize(); this.axis.addScaledVector(out, 0.6); }
@@ -137,15 +142,15 @@ export class Fairies {
 
   _make(i) {
     const g = new THREE.Group(); g.visible = false;
-    const body = this.model.clone(true); body.visible = true; body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); body.scale.setScalar(1.5);
+    const body = this.model.clone(true); body.visible = true; body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); body.scale.setScalar(2.0);
     const tint = new THREE.Color(TINTS[i % TINTS.length]);
     const tintMat = (mm) => { const c = mm.clone(); if (/Dress/.test(mm.name) && c.emissive) { c.color.copy(tint); c.emissive.copy(tint); } return c; };
     body.traverse((m) => { m.visible = true; if (m.isMesh) m.material = Array.isArray(m.material) ? m.material.map(tintMat) : tintMat(m.material); });
     g.add(body);
     let wings = null;
-    if (this.wingsModel) { wings = this.wingsModel.clone(true); wings.visible = true; wings.position.set(0, 0, 0); wings.rotation.set(0, 0, 0); wings.scale.setScalar(1.5); wings.traverse((m) => { m.visible = true; }); g.add(wings); }
+    if (this.wingsModel) { wings = this.wingsModel.clone(true); wings.visible = true; wings.position.set(0, 0, 0); wings.rotation.set(0, 0, 0); wings.scale.setScalar(2.0); wings.traverse((m) => { m.visible = true; }); g.add(wings); }
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: tint.clone().lerp(new THREE.Color(1, 1, 1), 0.4), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-    glow.position.y = 0.05; glow.scale.setScalar(0.22); g.add(glow);
+    glow.position.y = 0.07; glow.scale.setScalar(0.36); g.add(glow);
     this.scene.add(g);
     return { g, body, wings, glow, tint, state: 'home', t: 0, ph: i * 1.7, rest: i % this.rests.length, from: new THREE.Vector3(), mid: new THREE.Vector3(), to: new THREE.Vector3(), dur: 2, hop: rand(15, 35) };
   }
@@ -153,7 +158,7 @@ export class Fairies {
   // a later night: the fairies are already out, resting on their flowers, and their window is lit
   settle() {
     if (!this.ok) return;
-    this.home = true; for (const m of this.glass) m.emissiveIntensity = 1.4;
+    this.home = true; for (const m of this.glass) m.emissiveIntensity = 1.4; if (this.halo) this.halo.material.opacity = 0.45;
     this.list.forEach((f) => { f.state = 'rest'; f.g.visible = true; f.g.position.copy(this.rests[f.rest]); f.light = 1; });
   }
 
@@ -161,7 +166,7 @@ export class Fairies {
   wake(onSettled) {
     if (!this.ok) { if (onSettled) onSettled(); return; }
     this.home = true;
-    tweens.add(1.4, (k) => { for (const m of this.glass) m.emissiveIntensity = 1.4 * k * k; }, { delay: 0.8 });
+    tweens.add(1.4, (k) => { for (const m of this.glass) m.emissiveIntensity = 1.4 * k * k; if (this.halo) this.halo.material.opacity = 0.45 * k * k; }, { delay: 0.8 });
     this.list.forEach((f, i) => {
       tweens.add(0.1, () => {}, { delay: 2.2 + i * 0.7, done: () => {
         f.state = 'twirl'; f.t = 0; f.g.visible = true; f.g.position.copy(this.window); f.light = 0;
@@ -205,8 +210,8 @@ export class Fairies {
       // facing: where it flies, or towards you while it rests
       const look = f.state === 'rest' ? eye : f.state === 'fly' ? f.to : p.clone().add(new THREE.Vector3(-(p.z - this.axis.z), 0, p.x - this.axis.x));
       f.body.lookAt(look.x, p.y + (f.state === 'rest' ? 0 : 0.0), look.z); f.body.rotateY(Math.PI);
-      if (f.wings) { f.wings.quaternion.copy(f.body.quaternion); const fast = f.state !== 'rest'; f.wings.scale.set(1.5 * (fast ? 0.45 + 0.55 * Math.abs(Math.sin(time * 28 + f.ph)) : 0.8 + 0.2 * Math.sin(time * 3 + f.ph)), 1.5, 1.5); }
-      f.glow.material.opacity = f.light * (0.5 + 0.12 * Math.sin(time * 2 + f.ph));
+      if (f.wings) { f.wings.quaternion.copy(f.body.quaternion); const fast = f.state !== 'rest'; f.wings.scale.set(2.0 * (fast ? 0.45 + 0.55 * Math.abs(Math.sin(time * 28 + f.ph)) : 0.8 + 0.2 * Math.sin(time * 3 + f.ph)), 2.0, 2.0); }
+      f.glow.material.opacity = f.light * (0.75 + 0.15 * Math.sin(time * 2 + f.ph));
     }
   }
 }
@@ -225,6 +230,15 @@ export class Intro {
     c.wake.all = 0; c.sleep.sleepNow();
     c.sound.setAmbience(0.0001, 0.3);
     for (const L of c.lights) L.light.intensity = L.base * 0.45;
+    // the giants' ribbons of light are out too, until the light reaches their giant
+    this.ribbons = [];
+    c.W.root.traverse((o) => {
+      if (!o.isMesh || !/GiantRibbon/.test(o.name + (o.parent ? o.parent.name : ''))) return;
+      for (const m of [].concat(o.material)) if (m.uniforms && m.uniforms.fade) {
+        const centre = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+        m.uniforms.fade.value = 0; this.ribbons.push({ m, centre, k: 0, on: false });
+      }
+    });
     // where the butterfly goes, in order: around you, along the path ahead, the pond and its waterfall, the left
     // side, and last the fairies' giant
     const f = c.fairies, giant = f && f.window ? f.window.clone() : new THREE.Vector3(-4.9, 1.45, -8.9);
@@ -296,6 +310,7 @@ export class Intro {
     // the rest of the forest, out to the far trees, wakes softly together
     tweens.add(4, (k) => { c.wake.all = k * k * (3 - 2 * k); for (const L of c.lights) L.light.intensity = L.base * (0.45 + 0.55 * (this.progress + (1 - this.progress) * k)); }, { done: () => {
       c.sleep.groups.forEach((g, gi) => c.sleep.wakeGroup(gi, 2));
+      for (const r of this.ribbons || []) { r.on = true; r.k = 1; r.m.uniforms.fade.value = 1; }
       this.state = 'done'; if (this.onDone) this.onDone();
     } });
     c.sound.setAmbience(1, 3);
@@ -315,6 +330,7 @@ export class Intro {
     }
     // the mushroom clusters (and their fairy dust and ribbons) wake as the light reaches them
     c.sleep.groups.forEach((g, gi) => { if (!g.woken && c.wake.covers(g.centroid)) c.sleep.wakeGroup(gi, 3); });
+    for (const r of this.ribbons || []) { if (!r.on && c.wake.covers(r.centre)) r.on = true; if (r.on && r.k < 1) { r.k = Math.min(1, r.k + dt / 3); r.m.uniforms.fade.value = r.k * r.k; } }
     if (this.state !== 'done' && !this.finishing) for (const L of c.lights) L.light.intensity = L.base * (0.45 + 0.55 * this.progress);
   }
 }
