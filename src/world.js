@@ -8,7 +8,7 @@ import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
 // bump this whenever the forest is re-exported, so headsets never keep showing an old saved copy
-export const FOREST_VERSION = 'plants1';
+export const FOREST_VERSION = 'plants3';
 // where your eyes are, set by where you are playing from (chosen on the start screen before you go in):
 //  - bed:   sitting cross-legged on the forest floor, eyes about 0.82 m up (the forest floor is your bed)
 //  - chair: sitting on a mossy stump, eyes about 1.2 m up (the forest floor is your room's floor)
@@ -136,6 +136,8 @@ function processMaterial(m) {
 function plantMat(m) {
   const s = m.isMeshPhysicalMaterial ? toStandard(m) : m;
   s.vertexColors = true;
+  // (the glowing parts — spots, pores, wands, seeds, the light under the giants' caps — keep their full glow)
+  if (/Glow|Spot|Wand|Wisp|Warm|Edge/.test(m.name || '')) { s.customProgramCacheKey = () => 'plantglow'; return s; }
   s.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>',
       '#include <emissivemap_fragment>\n#ifdef USE_COLOR\n  totalEmissiveRadiance *= vColor.rgb;\n#endif');
@@ -210,7 +212,7 @@ export async function loadWorld(scene, onProgress) {
   placeMoon(W, moonPhase());
 
   // Gentle moonlight plus a dim sky fill; the forest's own glow does the rest.
-  W.hemi = new THREE.HemisphereLight(0x6b6fa8, 0x141018, 0.35); scene.add(W.hemi);
+  W.hemi = new THREE.HemisphereLight(0x8c9de6, 0x2a2238, 0.6);   // soft blue night light from above, a little warmth from the ground scene.add(W.hemi);
   W.moonLight = new THREE.DirectionalLight(0xc9d6ff, 0.4); scene.add(W.moonLight); scene.add(W.moonLight.target);
   applyMoonLight(W, moonPhase());
 

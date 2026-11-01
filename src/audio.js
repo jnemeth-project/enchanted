@@ -197,16 +197,26 @@ export class Sound {
     n.connect(lp); lp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.2);
   }
 
-  // A pebble dropping into the pond: a round, rising "bloop" and a soft little splash
+  // A pebble dropping into the pond: a deep, round "bloop" (a low bubble that swells up in pitch, with a woody
+  // mid tone on top so headset speakers carry it), a second small bubble after it, and a soft low splash
   plop(pos, strength = 1) {
     if (!this.enabled) return;
-    const k = Math.max(0.4, Math.min(1, strength)), ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
-    const o = ctx.createOscillator(); o.type = 'sine';
-    const f0 = 240 + Math.random() * 60; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 2.6, t + 0.09);
-    const og = ctx.createGain(); this._env(og, t, 0.004, 0.55 * k, 0.12); o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.2);
-    const n = this._src(this.brown || this.white); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 0.8;
-    const g = ctx.createGain(); this._env(g, t + 0.02, 0.005, 0.35 * k, 0.22);
-    n.connect(bp); bp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.35);
+    const k = Math.max(0.5, Math.min(1, strength)), ctx = this.ctx, t = ctx.currentTime, out = this._out(pos);
+    const bubble = (at, f0, rise, dur, gain) => {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f0, at); o.frequency.exponentialRampToValueAtTime(f0 * rise, at + dur * 0.8);
+      const og = ctx.createGain(); this._env(og, at, 0.006, gain, dur); o.connect(og); og.connect(out); o.start(at); o.stop(at + dur + 0.1);
+      const h = ctx.createOscillator(); h.type = 'triangle';
+      h.frequency.setValueAtTime(f0 * 2, at); h.frequency.exponentialRampToValueAtTime(f0 * 2 * rise, at + dur * 0.8);
+      const hg = ctx.createGain(); this._env(hg, at, 0.006, gain * 0.35, dur * 0.8); h.connect(hg); hg.connect(out); h.start(at); h.stop(at + dur + 0.1);
+    };
+    const f0 = 95 + Math.random() * 20;
+    bubble(t, f0, 2.0, 0.22, 1.25 * k);                               // the deep bloop
+    bubble(t + 0.13 + Math.random() * 0.05, f0 * 2.2, 1.7, 0.1, 0.35 * k);   // a little bubble rising after it
+    const n = this._src(this.brown || this.white); const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1400, t); lp.frequency.exponentialRampToValueAtTime(350, t + 0.25);
+    const g = ctx.createGain(); this._env(g, t + 0.01, 0.004, 0.45 * k, 0.3);
+    n.connect(lp); lp.connect(g); g.connect(out); n.start(t, Math.random() * 2); n.stop(t + 0.4);
   }
 
   // A pebble skipping off the water: a tiny bright "plip"

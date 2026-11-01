@@ -53,7 +53,7 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05040b);
-scene.fog = new THREE.FogExp2(0x0b0816, 0.018);
+scene.fog = new THREE.FogExp2(0x1b2650, 0.02); // a soft blue night haze all round the forest: the trees fade into gentle blue, not black
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.03, 400);
 const rig = new THREE.Group(); scene.add(rig); rig.add(camera);
 camera.position.copy(EYE);
