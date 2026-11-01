@@ -70,6 +70,24 @@ export class Sleep {
     this.asleepCount = 0; this.progress = 0;
   }
 
+  // the forest before anyone has arrived (the first night's intro): everything asleep at once, no fade
+  sleepNow() {
+    for (const g of this.groups) {
+      for (const c of g.clusters) { if (c.userData.sy === undefined) c.userData.sy = c.scale.y; c.userData.lv = 0.08; }
+      for (const d of g.dust) { if (d.userData.y0 === undefined) d.userData.y0 = d.position.y; d.userData.lv = 0; d.visible = false; }
+      for (const r of g.ribbons) { r.userData.lv = 0; r.visible = false; }
+      g.asleep = true; g.sleeping = false; g.woken = false;
+    }
+  }
+  // one group wakes: its mushrooms brighten, its fairy dust and ribbons of light fade back in
+  wakeGroup(gi, dur = 3) {
+    const g = this.groups[gi]; if (!g || g.woken) return; g.woken = true;
+    g.clusters.forEach((c, i) => { const from = c.userData.lv ?? 0.08; tweens.add(dur, (k) => { c.userData.lv = from + (1 - from) * k * k * (3 - 2 * k); if (c.userData.sy !== undefined) c.scale.y = c.userData.sy; }, { delay: i * 0.15 }); });
+    for (const d of g.dust) { d.visible = true; d.userData.twirlScale = 1; if (d.userData.y0 !== undefined) d.position.y = d.userData.y0; tweens.add(dur, (k) => { d.userData.lv = k; }, { delay: 0.4 }); }
+    for (const r of g.ribbons) { r.visible = true; tweens.add(dur, (k) => { r.userData.lv = k; }, { delay: 0.6 }); }
+    g.asleep = false; g.sleeping = false;
+  }
+
   allAsleep() { return this.asleepCount >= this.groups.length; }
 
   // Everything that is not a cluster dims with overall progress.

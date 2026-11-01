@@ -239,7 +239,7 @@ export class Crystals {
 
   light(cr) {
     if (cr.glow > 0.6) return;
-    cr.glow = 1;
+    cr.glow = 1; if (this.onAny) this.onAny(cr.c);
     this.sound.chime(cr.c, cr.hz);
     if (this.effects) {
       const top = cr.c.clone().add(new THREE.Vector3(0, 0.06, 0));

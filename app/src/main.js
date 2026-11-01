@@ -23,6 +23,7 @@ import { Menu } from './menu.js';
 import { ThingsMenu } from './thingsmenu.js';
 import { SleepyMushrooms } from './sleepy.js';
 import { Hoops } from './hoops.js';
+import { WakeField, Waterfall, Fairies, Intro } from './intro.js';
 import { Pond } from './pond.js';
 import { ShootingStars } from './wishes.js';
 import { Eggs } from './eggs.js';
@@ -132,7 +133,7 @@ let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || 
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
 let potToldRain = false;
-let hoops, W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails, pond, shooting, eggs;
+let hoops, waterfall, fairies, wake, intro, INTRO = false, W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails, pond, shooting, eggs;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
   options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
@@ -192,6 +193,16 @@ async function init() {
   pond = new Pond(W, scene); pebbles.pond = pond;
   // the hoops game: rings of light in front of you to throw pebbles through (never inside a tree)
   hoops = new Hoops(scene, sound, effects); pebbles.hoops = hoops;
+  // the waterfall at the back of the pond, and the fairies who live in the old lilac giant
+  waterfall = new Waterfall(W, sound); fairies = new Fairies(scene, W, sound, effects);
+  // the first night (or ?intro): the forest starts fast asleep, and wakes with the butterfly
+  wake = new WakeField();
+  intro = new Intro({ W, scene, sleep, guide, sound, effects, wake, fairies, say, eyePos, atEye, lights: [W.hemi, W.moonLight].filter(Boolean).map((light) => ({ light, base: light.intensity })) });
+  INTRO = !JUST_SIT && (params.has('intro') || !state.introDone);
+  if (INTRO) wake.patch(W.root);
+  intro.onDone = () => { state.introDone = true; saveState(state); if (things.halo) things.halo.visible = true; greet(); };
+  touch.onAny = (kind, at) => { if (intro.running) intro.touched(at || null); };
+  crystals.onAny = (at) => { if (intro.running) intro.touched(at || null); };
   hoops.blocked = (x, z) => playfield.trunks.some((t) => Math.hypot(x - t.x, z - t.z) < t.r + 0.6);
   hoops.onScore = (n) => { if (n === 1) say('Lovely', { hold: 1.6 }); else if (n % 5 === 0) say(`${n} rings`, { width: 0.7, hold: 1.8 }); };
   pebbles.onSkips = (n) => { if (time - (pebbles.skipSaid ?? -99) < 4 || n < 3) return; pebbles.skipSaid = time; say(n >= 4 ? `${n === 4 ? 'Four' : n === 5 ? 'Five' : 'Six'} skips!\nThe frogs can't believe it 🐸` : 'Three skips!\nThe frogs are impressed 🐸', { hold: 3 }); };
@@ -294,6 +305,12 @@ function begin() {
   if (options.voice && eggs) eggs.startVoice(sound.ctx);
   phase.name = 'arrival'; phase.t = 0;
   session.t = 0; session.len = (options.session || 10) * 60;
+  waterfall.start();
+  if (INTRO) {
+    // asleep: no lights, no night sounds, only the waterfall; the first touch brings the butterfly
+    phase.name = 'intro'; intro.start(); if (things.halo) things.halo.visible = false;
+    session.len += 90;   // (the intro doesn't eat into your chosen time)
+  } else fairies.settle();
   // a quiet arrival: no words at first, just the forest. The pot appears later, when the rain comes.
 }
 
@@ -412,7 +429,7 @@ ui.vr.addEventListener('click', async () => {
   } catch (e) { console.error(e); ui.status.textContent = 'Could not start VR on this device.'; }
 });
 ui.screen.addEventListener('click', () => { begin(); ui.hint.classList.add('show'); setTimeout(() => ui.hint.classList.remove('show'), 7000); });
-if (ui.howto) ui.howto.addEventListener('click', () => { TUTORIAL = true; state.memoryShown = false; ui.status.textContent = 'The butterfly will show you how'; ui.howto.disabled = true; });
+if (ui.howto) ui.howto.addEventListener('click', () => { if (wake && !INTRO && !JUST_SIT) { INTRO = true; wake.patch(W.root); } TUTORIAL = true; state.memoryShown = false; ui.status.textContent = 'The butterfly will show you how'; ui.howto.disabled = true; });
 
 // Put the player's head exactly at the seat, at seated eye height, whatever their real posture
 // (sitting, or lying back for the stars).
@@ -818,7 +835,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('hoops'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ hoops, startMode, stopGame, world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
+  window.__lo = () => ({ intro, wake, fairies, waterfall, hoops, startMode, stopGame, world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -878,7 +895,7 @@ function step(dt) {
     if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); pebbleNote(dt); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); pond.update(time, rain ? rain.level : 0); eggs.update(dt, input);
+    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); pebbleNote(dt); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); pond.update(time, rain ? rain.level : 0); eggs.update(dt, input); waterfall.update(dt, time); fairies.update(dt, time, eyePos()); intro.update(dt);
     shooting.skyOpen = phase.mode === 'count' || phase.mode === 'shapes'; shooting.update(dt, eyePos(), eyeRay().direction); jar.update(dt, input, time); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);

@@ -73,7 +73,7 @@ export class Touch {
 
   _fire(it, hand) {
     if (it.cool > 0) return;
-    this.count++; if (this.onAny) this.onAny(it.kind);
+    this.count++; if (this.onAny) this.onAny(it.kind, it.center);
     if (it.kind === 'boop') {
       it.spring.kick(-2.2); it.flash = 1; it.cool = 0.35;
       this.sound.boop(it.center, it.hz);
