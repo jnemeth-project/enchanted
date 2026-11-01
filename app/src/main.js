@@ -292,6 +292,13 @@ async function init() {
   sky.onShapeDone = onShapeDone;
   choice.onPick = (k) => (k === 'bed' ? goToBed() : k === 'snooze' ? snooze() : startMode(k));
   ui.status.textContent = newNight ? `Night ${state.nights}` : `Night ${state.nights}, again`;
+  // Get every shader and texture ready on the GPU now, while the start screen is up, instead of the first time
+  // each thing comes into view: otherwise turning round, a first splash or a first sparkle could stall the
+  // headset for a moment (a jolt, or a black flash). Hidden things (the pot, the fairies, the games) included.
+  ui.status.textContent = 'Waking the forest gently…';
+  await new Promise((r) => setTimeout(r, 30));
+  warmUp();
+  ui.status.textContent = newNight ? `Night ${state.nights}` : `Night ${state.nights}, again`;
   const xrOK = navigator.xr && await navigator.xr.isSessionSupported('immersive-vr').catch(() => false);
   loaded = { xr: !!xrOK }; ui.vr.textContent = xrOK ? 'Enter the forest' : 'Headset not found';
   updateEnter();
@@ -404,6 +411,15 @@ function sinkNook(dt) {
 // Looking at the pebbles on the white tree's shelf (to your left) for a moment shows, once a night, a quiet note that
 // there are pebbles on your right too, by the pond: no turning from left to right to throw (easier on motion sickness)
 let noteLook = 0, noteShown = false;
+// The fairy-light jar: hold it up in front of you and a line says what it is for (once a night)
+let jarTold = false, jarLook = 0;
+function jarHint(dt) {
+  if (jarTold || !jar || !jar.o || !jar.held) { jarLook = 0; return; }
+  const p = jar.o.getWorldPosition(new THREE.Vector3()), e = eyePos(), d = p.clone().sub(e), dist = d.length();
+  const inFront = dist < 0.75 && d.normalize().dot(eyeRay().direction) > 0.75;
+  jarLook = inFront ? jarLook + dt : 0;
+  if (jarLook > 0.6) { jarTold = true; say('Pick the fairy lights around you\nand place them in the jar', { hold: 4.5, at: e.clone().add(p.clone().sub(e).normalize().multiplyScalar(0.95)).add(new THREE.Vector3(0, 0.16, 0)), width: 0.42 }); }   // a comfortable way beyond the jar, never close to your eyes
+}
 function pebbleNote(dt) {
   if (noteShown || !pebbles || phase.name === 'loading') return;
   const shelf = pebbles.list.filter((p) => !p.o.userData.on_rock);
@@ -413,7 +429,9 @@ function pebbleNote(dt) {
   noteLook = near ? noteLook + dt : Math.max(0, noteLook - dt * 2);
   if (noteLook > 1.2) {
     noteShown = true;
-    say('If turning makes you feel queasy,\nthere are pebbles on your right too,\nnext to the pond', { hold: 5, at: eyePos().add(c.clone().sub(eyePos()).normalize().multiplyScalar(2.0)).add(new THREE.Vector3(0, 0.3, 0)), width: 0.62 });   // small, and well beyond the shelf (never close to your eyes)
+    { const e = eyePos(), toEye = e.clone().sub(c); toEye.y = 0; toEye.normalize();
+      // just below the pebbles, on the shelf's brown wood (light words read clearly there), not too close to you
+      say('If turning makes you feel queasy,\nthere are pebbles on your right too,\nnext to the pond', { hold: 5.5, at: c.clone().addScaledVector(toEye, 0.08).add(new THREE.Vector3(0, -0.13, 0)), width: 0.34 }); }
   }
 }
 
@@ -836,7 +854,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('hoops'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ intro, wake, fairies, waterfall, hoops, startMode, stopGame, world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
+  window.__lo = () => ({ errors, intro, wake, fairies, waterfall, hoops, startMode, stopGame, world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -872,7 +890,24 @@ function guardSystemGesture() {
   });
 }
 
-function loop() { step(paused ? 0 : Math.min(clock.getDelta(), 0.05)); }
+function warmUp() {
+  const hidden = [], textures = new Set();
+  scene.traverse((o) => {
+    if (!o.visible) { hidden.push(o); o.visible = true; }
+    if (o.material) for (const m of [].concat(o.material)) for (const k of ['map', 'emissiveMap', 'normalMap', 'alphaMap', 'roughnessMap', 'aoMap']) if (m[k] && m[k].isTexture) textures.add(m[k]);
+  });
+  try { renderer.compile(scene, camera); } catch (e) { console.warn('warm-up compile', e); }
+  try { for (const t of textures) renderer.initTexture(t); } catch (e) { console.warn('warm-up textures', e); }
+  for (const o of hidden) o.visible = false;
+}
+
+// A slip in one frame's game code must never cost a frame of picture (in the headset a skipped frame shows as
+// black): the error is noted (shown with ?debug) and the forest carries on.
+const errors = [];
+function loop() {
+  try { step(paused ? 0 : Math.min(clock.getDelta(), 0.05)); }
+  catch (e) { if (errors.length < 20) { errors.push(String(e && e.stack || e).slice(0, 400)); console.error(e); if (DEBUG) say('Error: ' + String(e && e.message || e).slice(0, 80), { hold: 3 }); } }
+}
 if (DEBUG) window.__tick = (seconds, dt = 1 / 30) => { for (let i = 0; i < seconds / dt; i++) step(dt); };
 
 function step(dt) {
@@ -897,7 +932,7 @@ function step(dt) {
     sleep.update(dt);
     choice.update(dt, time, input);
     twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); pebbleNote(dt); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); pond.update(time, rain ? rain.level : 0); eggs.update(dt, input); waterfall.update(dt, time, eyePos(), eyeRay().direction); fairies.update(dt, time, eyePos()); intro.update(dt);
-    shooting.skyOpen = phase.mode === 'count' || phase.mode === 'shapes'; shooting.update(dt, eyePos(), eyeRay().direction); jar.update(dt, input, time); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
+    shooting.skyOpen = phase.mode === 'count' || phase.mode === 'shapes'; shooting.update(dt, eyePos(), eyeRay().direction); jar.update(dt, input, time); jarHint(dt); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
     things.update(dt, input, time, eyeRay());

@@ -30,6 +30,10 @@ export class Seed {
     this.invite = false;
     for (const mats of this.stageMats) for (const m of mats) m.userData.baseE = m.emissiveIntensity;
     this.onGrow = null;
+    // the glow in the pot when it is watered
+    this.potGlow = 0;
+    this.glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xcfe8ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.glowSprite.position.copy(this.target).add(new THREE.Vector3(0, 0.03, 0)); this.glowSprite.scale.setScalar(0.45); this.glowSprite.renderOrder = 6; scene.add(this.glowSprite);
   }
 
   colorOf(i, t = 0) {
@@ -60,11 +64,18 @@ export class Seed {
   get canGrow() { return (this.demo || this.multiGrow || !this.grewThisSession) && this.state.stage < 3; } // one watering per session
 
   receiveWater(amount) {
-    const glow = this.stageMats[this.state.stage];
-    if (glow) for (const m of glow) { const b = m.emissiveIntensity; tweens.add(0.6, (k) => { m.emissiveIntensity = b * (1 + 0.6 * Math.sin(k * Math.PI)); }); }
+    // every drop that reaches the pot: the soil lights up with a soft glow straight away, so you can see it working
+    // (water arrives every frame while you pour: the pulse and sparkle come a few times a second, not every frame)
+    if ((this.potGlow || 0) < 0.55) {
+      const glow = this.stageMats[this.state.stage];
+      if (glow) for (const m of glow) { const b = m.userData.baseE ?? m.emissiveIntensity; tweens.add(0.6, (k) => { m.emissiveIntensity = b * (1 + 1.5 * Math.sin(k * Math.PI)); }); }
+      if (this.effects) this.effects.sparkle(this.target.clone(), 0xcfe4ff, 6, 0.06);
+    }
+    this.potGlow = Math.min(1, (this.potGlow || 0) + 0.7);
     if (!this.canGrow) return;
     this.water += amount;
-    if (this.water >= 0.6) this.grow();
+    // and the mushroom answers at once: the first pour makes it grow (no need to fill it up first)
+    if (this.water >= 0.15) this.grow();
   }
 
   grow() {
@@ -96,6 +107,9 @@ export class Seed {
   // Picking up the bloom and placing it somewhere.
   update(dt, input) {
     this.time += dt;
+    this.potGlow = Math.max(0, this.potGlow - dt * 0.6);
+    this.glowSprite.material.opacity = Math.min(0.95, this.potGlow * (0.85 + 0.15 * Math.sin(this.time * 6)));
+    this.glowSprite.scale.setScalar(0.3 + 0.25 * this.potGlow);
     if (this.invite && this.canGrow) { // the seed glows softly in and out while it waits for water
       const k = 1 + 0.9 * (0.5 + 0.5 * Math.sin(this.time * 1.5));
       for (const m of this.stageMats[this.state.stage] || []) m.emissiveIntensity = m.userData.baseE * k;

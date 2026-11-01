@@ -220,10 +220,14 @@ export class Fireflies {
           if (f.outT > 1.1) { f.state = 'out'; f.outT = 0; }
         }
       } else if (f.state === 'out') {
+        // happily on its way: it rises and flies off into the forest, still glowing, and fades only far away
         f.outT += dt;
-        f.light = Math.max(0, 1 - f.outT / 1.1);
-        if (f.outT > 0.6) { f.g.position.y -= dt * 0.1; f.g.position.z -= dt * 0.06; }
-        if (f.outT > 4) { this.scene.remove(f.g); f.halo.material.dispose(); f.core.material.dispose(); if (f.orb) f.orb.material.dispose(); if (f.lantern) f.lantern.dispose(); f.icon.material.dispose(); this.list.splice(i, 1); continue; }
+        f.light = f.outT < 1.6 ? 1 : Math.max(0, 1 - (f.outT - 1.6) / 2.6);
+        if (!f.away) { const p = f.g.position; f.away = new THREE.Vector3(p.x, 0, p.z).normalize().multiplyScalar(0.8).add(new THREE.Vector3(rand(-0.3, 0.3), 1.0, rand(-0.3, 0.3))).normalize(); }
+        const sp = Math.min(0.9, f.outT * 0.6);
+        f.g.position.addScaledVector(f.away, sp * dt);
+        f.g.position.x += Math.sin(time * 3 + f.ph) * 0.05 * dt;
+        if (f.outT > 4.4) { this.scene.remove(f.g); f.halo.material.dispose(); f.core.material.dispose(); if (f.orb) f.orb.material.dispose(); if (f.lantern) f.lantern.dispose(); f.icon.material.dispose(); this.list.splice(i, 1); continue; }
       }
       // colour: gold while hidden, its own colour while shown (or hinted)
       const want = f.state === 'shown' || f.state === 'pair' || f.state === 'out' ? 1 : 0;
@@ -239,7 +243,7 @@ export class Fireflies {
       f.halo.material.opacity = Math.min(1, (0.85 + 0.15 * show) * L); f.core.material.opacity = Math.min(1, 1.1 * L);
       f.halo.scale.setScalar(0.1 * (this.big ? 1.3 : 1) * (0.9 + 0.8 * show + (f.state === 'pair' ? 0.3 : 0)));
       f.core.scale.setScalar(0.024 * (this.big ? 1.3 : 1) * (1 + 0.6 * show));
-      f.body.visible = f.state === 'out' && f.light < 0.5;
+      f.body.visible = false;   // (no dark little body left behind: they fly off glowing)
       // the solid glowing ball, and the colour's symbol inside it while it shows
       if (f.orb) {
         f.orb.material.uniforms.color.value.copy(HIDDEN).lerp(COLOURS[f.ci].c, show);
@@ -250,7 +254,7 @@ export class Fireflies {
         // it faces you with its big eyes; to show its colour it turns round and shows you its glowing bottom
         // (with the colour's symbol on it), then turns back to face you again
         f.turn += ((show > 0.12 ? 1 : 0) - f.turn) * Math.min(1, dt * 5);
-        const tt = f.turn * f.turn * (3 - 2 * f.turn), ms = 1.6 * (this.big ? 1.3 : 1) * (f.state === 'out' ? Math.max(0.2, f.light) : 1);
+        const tt = f.turn * f.turn * (3 - 2 * f.turn), ms = 1.6 * (this.big ? 1.3 : 1);
         f.model.scale.setScalar(ms); f.model.visible = f.light > 0.02;
         f.model.lookAt(VIEW); f.model.rotateY(Math.PI * (1 - tt) + Math.sin(time * 0.7 + f.ph) * 0.12);
         f.model.rotateX(0.12 + Math.sin(time * 1.1 + f.ph) * 0.05); f.model.rotateZ(Math.sin(time * 0.9 + f.ph * 2) * 0.1);

@@ -87,15 +87,15 @@ void main(){
   float edge = smoothstep(0.0, 0.22, u) * smoothstep(1.0, 0.78, u);
   float alpha = (0.32 + 0.45 * line) * edge * smoothstep(1.0, 0.95, v) * (0.85 + 0.15 * smoothstep(0.0, 0.08, v));
   vec3 col = mix(vec3(0.42, 0.66, 0.82), vec3(0.92, 0.98, 1.0), clamp(line, 0.0, 1.0));
-  gl_FragColor = vec4(col * 0.95, alpha);
+  gl_FragColor = vec4(col * 1.35, min(1.0, alpha * 1.3));
 }`;
 const FOAM_FS = `uniform float time; varying vec2 vUv;
 void main(){
   float r = length(vUv - 0.5) * 2.0;
   float rings = sin(r * 11.0 - time * 3.2) * 0.5 + 0.5;
   float fizz = sin(atan(vUv.y - 0.5, vUv.x - 0.5) * 9.0 + time * 1.7 + r * 6.0) * 0.5 + 0.5;
-  float alpha = smoothstep(1.0, 0.25, r) * (0.18 + 0.32 * rings * (0.6 + 0.4 * fizz));
-  gl_FragColor = vec4(vec3(0.85, 0.95, 1.0) * 0.8, alpha);
+  float alpha = smoothstep(1.0, 0.25, r) * (0.25 + 0.4 * rings * (0.6 + 0.4 * fizz));
+  gl_FragColor = vec4(vec3(0.85, 0.95, 1.0) * 1.1, alpha);
 }`;
 
 export class Waterfall {
@@ -106,9 +106,15 @@ export class Waterfall {
     if (this.water) this.water.traverse((m) => { if (m.isMesh) { m.material = mk(WATER_FS); m.renderOrder = 3; } });
     if (this.foam) this.foam.traverse((m) => { if (m.isMesh) { m.material = mk(FOAM_FS); m.renderOrder = 3; } });
     const s = W.byName.G_WaterfallSound; this.at = s ? s.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(6.2, 0.2, -4.7);
+    // a soft moonlit shimmer along the falling water, so it can be seen across the pond even in the dark
+    if (this.water) {
+      const box = new THREE.Box3().setFromObject(this.water), c = box.getCenter(new THREE.Vector3()), h = box.getSize(new THREE.Vector3()).y;
+      this.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0x9fd8ff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
+      this.glow.position.copy(c); this.glow.scale.set(h * 0.9, h * 1.4, 1); W.root.parent.add(this.glow);
+    }
   }
   start() { this.sound.waterfall(this.at); }
-  update(dt, time, eye, dir) { this.u.time.value = time; this.sound.waterfallTick(dt, eye, dir); }
+  update(dt, time, eye, dir) { this.u.time.value = time; this.sound.waterfallTick(dt, eye, dir); if (this.glow) this.glow.material.opacity = 0.3 + 0.06 * Math.sin(time * 1.7); }
 }
 
 // ------------------------------------------------------------------ the fairies (they live in the old lilac giant)

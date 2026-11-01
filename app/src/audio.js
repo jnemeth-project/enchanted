@@ -359,15 +359,15 @@ export class Sound {
   waterfall(pos) {
     if (!this.enabled || this._wf) return;
     const ctx = this.ctx, t = ctx.currentTime;
-    const p = ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 2.5; p.rolloffFactor = 0.8;
+    const p = ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 4; p.rolloffFactor = 0.6;
     p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z; p.connect(this.master);
-    const look = ctx.createGain(); look.gain.value = 0.6; look.connect(p);           // follows where you look
-    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 3); g.connect(look);
+    const look = ctx.createGain(); look.gain.value = 1.0; look.connect(p);           // follows where you look
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.3, t + 3); g.connect(look);
     // the thin sheet of water: airy, high and quiet, gently wavering
     const a = this._src(this.white, true), hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2200;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6500;
-    const ag = ctx.createGain(); ag.gain.value = 0.05; a.connect(hp); hp.connect(lp); lp.connect(ag); ag.connect(g);
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.37; const lg = ctx.createGain(); lg.gain.value = 0.015; lfo.connect(lg); lg.connect(ag.gain);
+    const ag = ctx.createGain(); ag.gain.value = 0.11; a.connect(hp); hp.connect(lp); lp.connect(ag); ag.connect(g);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.37; const lg = ctx.createGain(); lg.gain.value = 0.03; lfo.connect(lg); lg.connect(ag.gain);
     a.start(t, Math.random() * 2); lfo.start(t);
     this._wf = { p, g, look, next: 0.2 };
   }
@@ -377,14 +377,14 @@ export class Sound {
     if (eye && dir) {
       const dx = w.p.positionX.value - eye.x, dy = w.p.positionY.value - eye.y, dz = w.p.positionZ.value - eye.z, L = Math.hypot(dx, dy, dz) || 1;
       const facing = Math.max(0, (dx * dir.x + dy * dir.y + dz * dir.z) / L);
-      w.look.gain.setTargetAtTime(0.45 + 0.75 * facing * facing, t, 0.4);
+      w.look.gain.setTargetAtTime(0.7 + 1.3 * facing * facing, t, 0.4);
     }
     // little bubbling drops: a soft rising "blip", a few a second, in small clusters
     w.next -= dt; if (w.next > 0) return;
     w.next = Math.random() < 0.3 ? 0.05 + Math.random() * 0.06 : 0.12 + Math.random() * 0.3;
     const o = ctx.createOscillator(); o.type = 'sine'; const f = 520 + Math.random() * 520;
     o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * (1.35 + Math.random() * 0.4), t + 0.05);
-    const g = ctx.createGain(); this._env(g, t, 0.004, 0.018 + Math.random() * 0.022, 0.07); o.connect(g); g.connect(w.g); o.start(t); o.stop(t + 0.12);
+    const g = ctx.createGain(); this._env(g, t, 0.004, 0.04 + Math.random() * 0.04, 0.08); o.connect(g); g.connect(w.g); o.start(t); o.stop(t + 0.12);
   }
   // how much of the forest's night chorus is heard (0..1); the first night's intro brings it in step by step
   setAmbience(k, tc = 2) {
@@ -393,10 +393,12 @@ export class Sound {
   // the fairies' doorbell: a soft two-note "ding dong"
   doorbell(pos) {
     if (!this.enabled) return;
-    const ctx = this.ctx, out = this._out(pos);
+    const ctx = this.ctx, out = ctx.createPanner();
+    out.panningModel = 'HRTF'; out.distanceModel = 'inverse'; out.refDistance = 6; out.rolloffFactor = 0.5;
+    out.positionX.value = pos.x; out.positionY.value = pos.y; out.positionZ.value = pos.z; out.connect(this.master);
     [[659.25, 0], [523.25, 0.42]].forEach(([hz, dt]) => {
       const t = ctx.currentTime + dt;
-      for (const [m, a] of [[1, 0.16], [2.76, 0.035], [5.4, 0.012]]) {
+      for (const [m, a] of [[1, 0.42], [2.76, 0.09], [5.4, 0.03]]) {
         const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = hz * m;
         const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(a, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6 / m);
         o.connect(g); g.connect(out); o.start(t); o.stop(t + 1.8);
