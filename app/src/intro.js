@@ -181,6 +181,22 @@ export class Fairies {
 
   get ok() { return this.list.length > 0; }
 
+  // where the bark really is above this squirrel's ledge (measured once: the trunk is not a perfect cylinder), every
+  // 15 cm up, so it climbs with its feet on the bark rather than floating beside it
+  _bark(s) {
+    const tr = s.trunk, a0 = Math.atan2(s.sit.z - tr.z, s.sit.x - tr.x), ray = new THREE.Raycaster(), out = [];
+    const ledge = Math.hypot(s.sit.x - tr.x, s.sit.z - tr.z);
+    for (let h = 0; h <= 0.76; h += 0.15) {
+      const a = a0 + 0.36 * Math.min(1, h / 0.6), dir = new THREE.Vector3(-Math.cos(a), 0, -Math.sin(a));
+      const from = new THREE.Vector3(tr.x - dir.x * 2, s.sit.y + Math.max(0.12, h), tr.z - dir.z * 2);
+      ray.set(from, dir); ray.far = 2.2;
+      const hit = ray.intersectObject(this.root, true).find((x) => x.object.visible && !/Squirrel/.test(x.object.name + (x.object.parent ? x.object.parent.name : '')));
+      const r = hit ? Math.hypot(hit.point.x - tr.x, hit.point.z - tr.z) : null;
+      out.push(r && r < tr.r + 0.2 ? r : (out.length ? out[out.length - 1] : Math.min(tr.r, ledge - 0.08)));
+    }
+    return out;
+  }
+
   _make(i) {
     const g = new THREE.Group(); g.visible = false;
     const body = this.model.clone(true); body.visible = true; body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); body.scale.setScalar(2.0);
@@ -258,9 +274,14 @@ export class Fairies {
 }
 
 // ------------------------------------------------------------------ the squirrels (one lives behind the window high on the door tree)
+// the climb: [time (s), height up the trunk (m), how far round it (radians)]; the first and last steps are the
+// hops between its ledge and the bark
+const CLIMB = [[0, 0, 0], [0.35, 0, 0], [0.75, 0.16, 0.12], [1.35, 0.16, 0.12], [1.8, 0.38, 0.28], [2.6, 0.38, 0.28],
+  [3.05, 0.6, 0.36], [4.9, 0.6, 0.36], [5.6, 0.3, 0.2], [6.1, 0.3, 0.2], [6.7, 0, 0], [7.05, 0, 0]];
+
 export class Squirrels {
   constructor(scene, W, sound, effects) {
-    this.scene = scene; this.sound = sound; this.effects = effects;
+    this.scene = scene; this.sound = sound; this.effects = effects; this.root = W.root;
     const get = (n) => W.byName[n];
     this.model = get('G_SquirrelModel');
     const pos = (n) => (get(n) ? get(n).getWorldPosition(new THREE.Vector3()) : null);
@@ -284,6 +305,22 @@ export class Squirrels {
     }
   }
   get ok() { return this.list.length > 0; }
+
+  // where the bark really is above this squirrel's ledge (measured once: the trunk is not a perfect cylinder), every
+  // 15 cm up, so it climbs with its feet on the bark rather than floating beside it
+  _bark(s) {
+    const tr = s.trunk, a0 = Math.atan2(s.sit.z - tr.z, s.sit.x - tr.x), ray = new THREE.Raycaster(), out = [];
+    const ledge = Math.hypot(s.sit.x - tr.x, s.sit.z - tr.z);
+    for (let h = 0; h <= 0.76; h += 0.15) {
+      const a = a0 + 0.36 * Math.min(1, h / 0.6), dir = new THREE.Vector3(-Math.cos(a), 0, -Math.sin(a));
+      const from = new THREE.Vector3(tr.x - dir.x * 2, s.sit.y + Math.max(0.12, h), tr.z - dir.z * 2);
+      ray.set(from, dir); ray.far = 2.2;
+      const hit = ray.intersectObject(this.root, true).find((x) => x.object.visible && !/Squirrel/.test(x.object.name + (x.object.parent ? x.object.parent.name : '')));
+      const r = hit ? Math.hypot(hit.point.x - tr.x, hit.point.z - tr.z) : null;
+      out.push(r && r < tr.r + 0.2 ? r : (out.length ? out[out.length - 1] : Math.min(tr.r, ledge - 0.08)));
+    }
+    return out;
+  }
 
   // a later night: everyone is already out, and the window is lit
   settle() { for (const m of this.glass) m.emissiveIntensity = 1.2; if (this.halo) this.halo.material.opacity = 0.55; this.list.forEach((s) => this._sit(s)); }
@@ -315,18 +352,35 @@ export class Squirrels {
         if (u >= 1) this._sit(s);
       } else if (s.state === 'sit') {
         p.copy(s.sit); p.y += Math.abs(Math.sin(time * 1.6 + s.ph)) * 0.004;
-        if (s.t > s.next && s.trunk) { s.state = 'scurry'; s.t = 0; s.next = rand(15, 35); }
+        if (s.t > s.next && s.trunk) { s.state = 'scurry'; s.t = 0; s.next = rand(15, 35); if (!s.bark) s.bark = this._bark(s); }
       } else if (s.state === 'scurry') {
-        // a quick run round the trunk and back: up and round, then back down to its seat
-        const T = 3.2, u = Math.min(1, s.t / T), k = Math.sin(u * Math.PI);
-        const a0 = Math.atan2(s.sit.z - s.trunk.z, s.sit.x - s.trunk.x), a = a0 + k * 1.6, R = s.trunk.r + 0.09;
-        p.set(s.trunk.x + Math.cos(a) * R, s.sit.y + k * 0.7, s.trunk.z + Math.sin(a) * R);
-        if (u >= 1) this._sit(s);
+        // a little climb on the trunk, the way squirrels do: a hop onto the bark, then up in short dashes with
+        // pauses, a look round at the top, and back down head first; its feet on the bark the whole time
+        const tr = s.trunk, a0 = Math.atan2(s.sit.z - tr.z, s.sit.x - tr.x), bark = s.bark;
+        const R = (h) => { const k = Math.max(0, Math.min(bark.length - 1, h / 0.15)), i0 = Math.floor(k), i1 = Math.min(bark.length - 1, i0 + 1); return bark[i0] + (bark[i1] - bark[i0]) * (k - i0) + 0.012; };
+        const at = (h, da) => new THREE.Vector3(tr.x + Math.cos(a0 + da) * R(h), s.sit.y + h, tr.z + Math.sin(a0 + da) * R(h));
+        const K = CLIMB, end = K[K.length - 1][0];
+        let i = 0; while (i < K.length - 2 && s.t > K[i + 1][0]) i++;
+        const [t0, h0, d0] = K[i], [t1, h1, d1] = K[i + 1], u = Math.min(1, Math.max(0, (s.t - t0) / (t1 - t0))), e = u * u * (3 - 2 * u);
+        if (i === 0) p.copy(s.sit).lerp(at(0, 0), e).add(new THREE.Vector3(0, Math.sin(u * Math.PI) * 0.05, 0));             // hop on
+        else if (i === K.length - 2) p.copy(at(0, 0)).lerp(s.sit, e).add(new THREE.Vector3(0, Math.sin(u * Math.PI) * 0.05, 0)); // hop off
+        else p.copy(at(h0 + (h1 - h0) * e, d0 + (d1 - d0) * e));
+        // which way it is heading (kept while it pauses), and its belly against the bark
+        const n = new THREE.Vector3(p.x - tr.x, 0, p.z - tr.z).normalize();
+        if (i > 0 && i < K.length - 2 && (h1 !== h0 || d1 !== d0)) { s.dir = at(h1, d1).sub(at(h0, d0)).normalize(); }
+        if (!s.dir) s.dir = new THREE.Vector3(0, 1, 0);
+        const onBark = i > 0 && i < K.length - 2;
+        const up = onBark ? n : new THREE.Vector3(0, 1, 0);
+        const fwd = onBark ? s.dir.clone().addScaledVector(up, -s.dir.dot(up)).normalize() : i === 0 ? n.clone().negate() : n.clone();
+        const z = fwd.clone().negate(), x = new THREE.Vector3().crossVectors(up, z).normalize(), y = new THREE.Vector3().crossVectors(z, x);
+        const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+        if (!s.q) s.q = s.body.quaternion.clone();
+        s.q.slerp(q, Math.min(1, dt * 10)); s.body.quaternion.copy(s.q);
+        if (s.t >= end) { this._sit(s); s.q = null; s.dir = null; }
+        continue;
       }
-      // it faces you while it sits, and the way it runs while it scurries
-      if (s.state === 'scurry' && s.trunk) { const out = new THREE.Vector3(p.x - s.trunk.x, 0, p.z - s.trunk.z).normalize(); s.body.lookAt(p.x + out.z, p.y + 0.5, p.z - out.x); }
-      else { s.body.lookAt(eye.x, p.y, eye.z); s.body.rotateY(Math.PI); s.body.rotateY(Math.sin(time * 0.7 + s.ph) * 0.25); }
-      if (s.state === 'scurry') s.body.rotateY(Math.PI);
+      // it faces you while it sits
+      s.body.lookAt(eye.x, p.y, eye.z); s.body.rotateY(Math.PI); s.body.rotateY(Math.sin(time * 0.7 + s.ph) * 0.25);
     }
   }
 }

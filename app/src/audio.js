@@ -364,11 +364,18 @@ export class Sound {
     p.positionX.value = pos.x; p.positionY.value = pos.y; p.positionZ.value = pos.z; p.connect(this.master);
     const look = ctx.createGain(); look.gain.value = 1.0; look.connect(p);
     const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.0, t + 3); g.connect(look);
-    // the low burble under it: brown noise through a narrow, slowly wandering resonance (a gurgle, not a hiss)
-    const b = this._src(this.brown, true), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 340; bp.Q.value = 6;
-    const bg = ctx.createGain(); bg.gain.value = 0.16; b.connect(bp); bp.connect(bg); bg.connect(g);
-    const wob = ctx.createOscillator(); wob.frequency.value = 0.6; const wg = ctx.createGain(); wg.gain.value = 70; wob.connect(wg); wg.connect(bp.frequency);
-    b.start(t, Math.random() * 2); wob.start(t);
+    // a soft, steady stream: never hissy (everything above about 1.6 kHz is rolled away), never single drips.
+    // A low, smooth bed of brown noise for the body of the water, and over it three narrow bands of soft noise
+    // whose pitch keeps wandering (each pushed by a few slow, unrelated swings), which is what makes water
+    // babble: a continuous, gently changing murmur, like a small brook running over stones.
+    const soft = ctx.createBiquadFilter(); soft.type = 'lowpass'; soft.frequency.value = 1600; soft.Q.value = 0.3; soft.connect(g);
+    const bed = this._src(this.brown, true), bedF = ctx.createBiquadFilter(); bedF.type = 'lowpass'; bedF.frequency.value = 700; bedF.Q.value = 0.4;
+    const bedG = ctx.createGain(); bedG.gain.value = 0.2; bed.connect(bedF); bedF.connect(bedG); bedG.connect(soft); bed.start(t, Math.random() * 2);
+    for (const [f0, q, amt, gain, rates] of [[420, 3.5, 90, 0.22, [0.9, 2.3, 4.1]], [690, 4, 140, 0.16, [1.3, 3.1, 5.3]], [1050, 4.5, 200, 0.09, [1.7, 3.7, 6.1]]]) {
+      const n = this._src(this.white, true), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f0; bp.Q.value = q;
+      const ng = ctx.createGain(); ng.gain.value = gain; n.connect(bp); bp.connect(ng); ng.connect(soft); n.start(t, Math.random() * 2);
+      for (const r of rates) { const o = ctx.createOscillator(); o.frequency.value = r * (0.85 + Math.random() * 0.3); const og = ctx.createGain(); og.gain.value = amt / rates.length; o.connect(og); og.connect(bp.frequency); o.start(t + Math.random()); }
+    }
     this._wf = { p, g, look, next: 0.2, burst: 0 };
   }
   waterfallTick(dt, eye, dir) {
@@ -379,15 +386,6 @@ export class Sound {
       const facing = Math.max(0, (dx * dir.x + dy * dir.y + dz * dir.z) / L);
       w.look.gain.setTargetAtTime(0.7 + 1.3 * facing * facing, t, 0.4);
     }
-    // bubbles: little runs of 2 to 5 close together, then a short pause
-    w.next -= dt; if (w.next > 0) return;
-    if (w.burst <= 0) w.burst = 2 + Math.floor(Math.random() * 4);
-    w.burst--; w.next = w.burst > 0 ? 0.04 + Math.random() * 0.07 : 0.15 + Math.random() * 0.35;
-    const o = ctx.createOscillator(); o.type = 'sine';
-    const f = 380 + Math.random() * 520, d = 0.035 + Math.random() * 0.05;
-    o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * (1.6 + Math.random() * 0.6), t + d);
-    const gg = ctx.createGain(); gg.gain.setValueAtTime(0.0001, t); gg.gain.exponentialRampToValueAtTime(0.05 + Math.random() * 0.06, t + 0.006); gg.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.03);
-    o.connect(gg); gg.connect(w.g); o.start(t); o.stop(t + d + 0.05);
   }
   // how much of the forest's night chorus is heard (0..1); the first night's intro brings it in step by step
   setAmbience(k, tc = 2) {

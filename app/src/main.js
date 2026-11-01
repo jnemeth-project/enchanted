@@ -103,7 +103,12 @@ for (const side of ['left', 'right']) for (const k of ['ray', 'grab', 'touch']) 
 const scene = world.scene;
 scene.background = new THREE.Color(0x05040b);
 const passthrough = new Passthrough(scene, 0x05040b);
-{ const r = document.getElementById('row-passthrough'); if (r && AR_OK) r.style.display = ''; }
+{ const r = document.getElementById('row-passthrough'); if (r && AR_OK) r.style.display = '';
+  // your room can only be seen in the headset: while it is ticked, the "on this screen" choice steps aside, so the
+  // only way in is the headset (it could otherwise start the forest in the browser window by mistake)
+  const box = document.getElementById('opt-passthrough'), scr = document.getElementById('enter-screen');
+  const sync = () => { if (scr) scr.style.display = box && box.checked && AR_OK ? 'none' : ''; };
+  if (box) box.addEventListener('change', sync); setTimeout(sync, 0); }
 scene.fog = new THREE.FogExp2(0x1b2650, 0.02); // a soft blue night haze all round the forest: the trees fade into gentle blue, not black
 const camera = world.camera;
 const rig = world.player;   // IWSDK's player rig (XROrigin): the camera and your hands live in it
@@ -134,7 +139,10 @@ const sky = new SkyGames(scene, sound, EYE, eyeRay, viewQuat);
 const SKY = (m) => m === 'count' || m === 'shapes';
 const GROW_WORDS = ['', 'Your little seed has sprouted\nIt will grow, day by day', 'Your magic mushroom is growing\nday by day', 'Your magic mushroom\nhas bloomed'];
 const abovePot = () => seed.target.clone().add(new THREE.Vector3(0, 0.42, 0));
-const state = loadState();
+// The test build (/next/, or ?fresh anywhere) always starts as your very first night: nothing carried over from
+// earlier test rounds (the night count, the welcome, what has grown). ?keep keeps the saved nights there.
+const FRESH = (/\/next\//.test(location.pathname) || params.has('fresh')) && !params.has('keep');
+const state = FRESH ? loadState(null) : loadState();
 const newNight = beginNight(state); saveState(state);
 // First-time guidance (the butterfly's demonstrations and the words) shows on the very first visit,
 // or whenever asked for (?tutorial=1, or "Show me how to play").
@@ -256,6 +264,7 @@ async function init() {
   menu.softEdges = !!options.calm;
   menu.onSoftEdges = (on) => { setCalm(on); try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
   menu.setRoomAvailable(AR_OK); menu.room = !!options.passthrough;
+  passthrough.keepVisible([menu.door, menu.sign], EYE);
   menu.onRoom = (on) => { options.passthrough = on; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
   seek.roomShown = () => passthrough.on && passthrough.ar;
   guides = new SoundGuides(sound, () => [
@@ -359,6 +368,7 @@ function readOptions() {
   if (touch) touch.highlight = options.bright ? 0.35 : 0;
 }
 for (const [id, key] of [['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-calm', 'calm'], ['opt-large', 'large'], ['opt-speak', 'speak'], ['opt-guides', 'guides'], ['opt-outlines', 'outlines'], ['opt-voice', 'voice'], ['opt-passthrough', 'passthrough']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
+{ const el = document.getElementById('opt-passthrough'); if (el) el.dispatchEvent(new Event('change')); }
 { const v = document.getElementById('opt-volume'); if (v) v.value = options.volume; }
 // how long tonight's session lasts: 5, 10, 15 or 20 minutes (remembered)
 for (const b of document.querySelectorAll('#session button')) {
@@ -398,7 +408,9 @@ function applySeat() {
   }
   if (sleepy && sleepy.setSeat) sleepy.setSeat(seat);
   // the mossy rocks within reach: taller beside a chair, with their crystals and bubble mushrooms lifted with them
-  const k = seat === 'chair' ? 2.4 : 1.0;   // (rock tops at about 22 cm on the bed, 53 cm beside a chair)
+  // (on a bed the forest floor is about where your mattress is, so low rocks would sit down inside the bed: there
+  // they stand taller, their tops about half a metre below your eyes, above your lap and within easy reach)
+  const k = seat === 'chair' ? 2.4 : 3.4;
   for (const r of W.reachRocks || []) {
     const top = r.userData.rock_top || 0.3, side = r.userData.side;
     if (r.userData.sy0 === undefined) r.userData.sy0 = r.scale.y;

@@ -139,7 +139,7 @@ export class ThingsMenu {
     const c = this.boardC.clone(), e = eye ? eye.clone() : new THREE.Vector3(0, 0.82, 0);
     const toEye = e.clone().sub(c); toEye.y = 0; toEye.normalize();
     const side = new THREE.Vector3(-toEye.z, 0, toEye.x); // toward the front of you
-    const p = c.clone().addScaledVector(toEye, 0.32).addScaledVector(side, side.z < 0 ? 0.2 : -0.2); p.y = Math.max(e.y - 0.02, Math.min(c.y - 0.04, e.y + 0.18));   // (well clear of the trunk)
+    const p = c.clone().addScaledVector(toEye, 0.46).addScaledVector(side, side.z < 0 ? 0.2 : -0.2); p.y = Math.max(e.y - 0.02, Math.min(c.y - 0.04, e.y + 0.18));   // (well clear of the trunk)
     this.card.position.copy(p); this.card.lookAt(e);
     this.card.visible = true; const from = this.k; tweens.add(0.5, (k) => { this.k = from + (1 - from) * k; });
     this.sound.boop(c, 293.66);
@@ -209,18 +209,25 @@ export class ThingsMenu {
     input.hands.forEach((h, i) => {
       if (!h.present) { this.inside[i] = false; this.cardIn[i] = null; return; }
       const tip = h.tips ? h.tips[1] || h.index : h.index;
+      // the little board opens the card with a fingertip (only while the card is closed: reaching for the card
+      // must never brush the board and fold it away again)
       if (this.board && tip) {
-        const inB = tip.distanceTo(this.boardC) < this.boardR * 0.9;
-        if (inB && !this.inside[i]) this.toggle(eye);
+        const inB = !this.open && tip.distanceTo(this.boardC) < Math.min(0.09, this.boardR * 0.7);
+        if (inB && !this.inside[i] && time - (this.lastPress || -9) > 0.8) { this.toggle(eye); this.lastPress = time; }
         this.inside[i] = inB;
       }
+      // on the card: a deliberate poke with the index fingertip, from in front. One poke chooses one thing; sliding
+      // along the card, or a hand resting on it, chooses nothing more until the finger has come back out
       if (this.open && this.k > 0.6 && tip) {
         const local = this.card.worldToLocal(tip.clone());
-        let key = null;
-        if (Math.abs(local.z) < 0.025 && Math.abs(local.x) < PW / 2 && Math.abs(local.y) < PH / 2) key = this._at(new THREE.Vector2(local.x / PW + 0.5, local.y / PH + 0.5));
-        if (key) hot = key;
-        if (key && key !== this.cardIn[i]) this._press(key);
-        this.cardIn[i] = key;
+        const over = Math.abs(local.x) < PW / 2 && Math.abs(local.y) < PH / 2;
+        const key = over ? this._at(new THREE.Vector2(local.x / PW + 0.5, local.y / PH + 0.5)) : null;
+        if (key && local.z < 0.06 && local.z > -0.03) hot = key;
+        const st = this.cardIn[i] || (this.cardIn[i] = { armed: false, used: false });
+        if (!over || local.z > 0.035) { st.armed = over && local.z < 0.12; st.used = false; }   // in front of it: ready
+        else if (local.z < 0.012 && local.z > -0.04 && st.armed && !st.used && key && time - (this.lastPress || -9) > 0.6) {
+          st.used = true; this.lastPress = time; this._press(key);
+        } else if (local.z <= -0.04) st.armed = false;   // came in from behind or from the side: never counts
       }
     });
     this.redrawT = Math.max(0, (this.redrawT || 0) - dt);
