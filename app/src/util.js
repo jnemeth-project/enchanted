@@ -99,3 +99,17 @@ export function setEmissiveScale(mats, k) {
 }
 
 export function parseJSON(s, fallback = null) { try { return JSON.parse(s); } catch { return fallback; } }
+
+// A small round-cornered sign with one word on it (the "Stop" signs in the games): soft coral with cream letters,
+// readable but calm. Cached per word.
+const signCache = {};
+export function signTexture(word, { bg = '#c96a5e', edge = '#f3d9b8', fg = '#fff6e6' } = {}) {
+  const key = word + bg; if (signCache[key]) return signCache[key];
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128; const g = c.getContext('2d');
+  const r = 34, x = 8, y = 8, w = 240, h = 112;
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  g.fillStyle = bg; g.fill(); g.lineWidth = 8; g.strokeStyle = edge; g.stroke();
+  g.fillStyle = fg; g.font = '600 68px "Iowan Old Style", "Palatino Linotype", Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(word, 128, 68);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; signCache[key] = t; return t;
+}

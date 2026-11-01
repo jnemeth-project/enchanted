@@ -3,7 +3,7 @@
 // note); boop a second: if the colours match, the pair glows together and goes to sleep, and a part
 // of the forest sleeps with them. If not, they fade back to gold and wait. No timer, no score, no fail.
 import * as THREE from 'three';
-import { glowTexture, rand, clamp } from './util.js';
+import { glowTexture, rand, clamp, signTexture } from './util.js';
 import { EYE } from './world.js';
 
 const HIDDEN = new THREE.Color(1.0, 0.9, 0.62);    // plain firefly glow: pale gold, so every colour stands out from it
@@ -68,6 +68,7 @@ export class Fireflies {
     this.onMatch = null; this.onMiss = null; this.onAllDone = null; this.onPeek = null; this.onPeekEnd = null;
     this.peekT = 0; this.peekDur = 10; this.peeked = false;
     this.sinceMatch = 0;
+    this.onStop = null; this.stopper = null;   // one more firefly, at the very bottom, holding up a little "Stop" sign
   }
 
   get outCount() { return this.matched; }
@@ -89,6 +90,66 @@ export class Fireflies {
       const from = homes[k % homes.length].clone().add(new THREE.Vector3(rand(-0.6, 0.6), rand(0, 0.8), rand(-0.6, 0.6)));
       this._spawn(from, to, k * (this.fast ? 0.06 : 0.14), colourOf[k]);
     });
+    // the Stop firefly flies in last, to just below the middle of the lowest row
+    if (!this.stopper) this.stopper = this._makeStopper();
+    const st = this.stopper, low = Math.min(...slots.map((p) => p.y));
+    st.to.set(0, low - 0.17, -0.4); st.gone = false; st.t = -(n * (this.fast ? 0.06 : 0.14) + 0.6); st.light = 0;
+    st.g.position.set(0, st.to.y + 0.6, -1.4); st.g.visible = false;
+  }
+
+  _updateStopper(dt, time, input) {
+    const st = this.stopper; if (!st) return;
+    if (st.gone) { st.light = Math.max(0, st.light - dt * 1.5); if (st.light <= 0) { st.g.visible = false; return; } }
+    else { st.t += dt; if (st.t < 0) return; st.light = Math.min(1, st.light + dt); }
+    st.g.visible = true;
+    const goal = st.to.clone().add(new THREE.Vector3(Math.sin(time * 0.6) * 0.006, Math.sin(time * 0.9) * 0.008, 0));
+    st.g.position.lerp(goal, 1 - Math.exp(-(st.t < 2 ? 2 : 3) * dt));
+    st.halo.material.opacity = 0.75 * st.light;
+    st.sign.material.opacity = st.light; st.sign.lookAt(VIEW);
+    if (st.model) {
+      st.model.scale.setScalar(1.6 * Math.max(0.05, st.light)); st.model.lookAt(VIEW); st.model.rotateY(Math.PI); st.model.rotateX(0.12);
+      const flap = 0.3 + 0.22 * Math.sin(time * 12);
+      st.model.children.forEach((w) => { if (w.userData.side) w.rotation.y = -w.userData.side * (0.26 + flap); });
+    }
+    if (st.gone || st.light < 0.8 || !this.active) return;
+    // a touch on the firefly or its sign stops the game
+    const c = st.g.position, s = st.sign.getWorldPosition(new THREE.Vector3());
+    input.hands.forEach((h, hi) => {
+      if (!h.present) { st.inside[hi] = false; return; }
+      let hit = h.pinching && (h.pinchPoint.distanceTo(c) < 0.06 || h.pinchPoint.distanceTo(s) < 0.05);
+      for (let k = 1; k < 5 && !hit; k++) if (h.tips[k].distanceTo(c) < 0.045 || h.tips[k].distanceTo(s) < 0.045) hit = true;
+      if (hit && !st.inside[hi]) this._stopTouched();
+      st.inside[hi] = hit;
+    });
+  }
+
+  _stopTouched() {
+    const st = this.stopper; if (!st || st.gone) return;
+    this.sound.boop(st.g.position.clone(), 130);
+    if (this.onStop) this.onStop();
+  }
+
+  // the Stop firefly: a plain gold firefly (never part of a pair) at the bottom in the middle, holding a little
+  // sign up over its head. Touch it, or its sign, and the game ends.
+  _makeStopper() {
+    const g = new THREE.Group();
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: HIDDEN.clone(), transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.scale.setScalar(0.08); halo.renderOrder = 4; g.add(halo);
+    let model = null;
+    if (this.model && this.model.body) {
+      model = new THREE.Group(); const body = this.model.body.clone(true); body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); body.scale.set(1, 1, 1);
+      body.traverse((m) => { m.visible = true; if (m.isMesh && m.material && m.material.name === 'FireflyLantern') { m.material = m.material.clone(); m.material.color.copy(HIDDEN); if (m.material.emissive) { m.material.emissive.copy(HIDDEN); m.material.emissiveIntensity = 1.4; } } });
+      model.add(body);
+      if (this.model.wing) for (const side of [1, -1]) { const w = this.model.wing.clone(true); w.traverse((m) => { m.visible = true; }); w.position.set(WING_HINGE.x * side, WING_HINGE.y, WING_HINGE.z); w.scale.set(side, 1, 1); w.userData.side = side; model.add(w); }
+      model.scale.setScalar(1.6); g.add(model);
+    }
+    // the sign on a thin twig, held up above its head
+    const twig = new THREE.Mesh(new THREE.CylinderGeometry(0.0018, 0.0018, 0.05, 5), new THREE.MeshBasicMaterial({ color: 0x8a6040 }));
+    twig.position.y = 0.035; g.add(twig);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.04), new THREE.MeshBasicMaterial({ map: signTexture('Stop'), transparent: true, fog: false, side: THREE.DoubleSide, depthWrite: false }));
+    sign.position.y = 0.075; sign.renderOrder = 6; g.add(sign);
+    g.visible = false; this.scene.add(g);
+    return { g, halo, model, sign, to: new THREE.Vector3(), t: 0, light: 0, inside: [false, false], gone: false };
   }
 
   _spawn(from, to, delay, ci) {
@@ -124,6 +185,7 @@ export class Fireflies {
   }
 
   update(dt, time, input) {
+    this._updateStopper(dt, time, input);
     if (this.active && !this.allDone && this.ready) this.sinceMatch += dt;
     // a gentle hint if you have been searching for a while: one hidden pair shimmers its colour briefly
     if (this.active && this.ready && !this.allDone && (this.sinceMatch > 45 || this.misses >= 4) && !this.list.some((f) => f.hint > 0)) {
@@ -233,6 +295,8 @@ export class Fireflies {
   get ready() { return this.peeked && this.peekT === 0; }
 
   pick(ray) {
+    const st = this.stopper;
+    if (st && !st.gone && this.active && st.light > 0.8 && (ray.distanceToPoint(st.g.position) < 0.05 || ray.distanceToPoint(st.sign.getWorldPosition(new THREE.Vector3())) < 0.05)) return { key: 'flyStop', size: 0.07, point: st.g.position.clone(), fire: () => this._stopTouched() };
     if (!this.ready) return null;
     let best = null, bd = 1e9;
     for (const f of this.list) {
@@ -286,6 +350,6 @@ export class Fireflies {
   // a matching partner for a given firefly (the butterfly uses this to show the game)
   partnerOf(f) { return this.list.find((x) => x !== f && x.ci === f.ci && x.state === 'wait'); }
 
-  clear() { for (const f of this.list) this.scene.remove(f.g); this.list = []; this.shown = []; }
-  dismiss() { this.active = false; for (const f of this.list) if (f.state !== 'out') { f.state = 'out'; f.outT = 0; } }
+  clear() { for (const f of this.list) this.scene.remove(f.g); this.list = []; this.shown = []; if (this.stopper) { this.stopper.gone = true; this.stopper.light = 0; this.stopper.g.visible = false; } }
+  dismiss() { this.active = false; for (const f of this.list) if (f.state !== 'out') { f.state = 'out'; f.outT = 0; } if (this.stopper) this.stopper.gone = true; }
 }

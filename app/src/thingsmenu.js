@@ -9,7 +9,7 @@ import { glowTexture, tweens } from './util.js';
 const FONT = '"Iowan Old Style", "Palatino Linotype", Georgia, serif';
 const GAMES = [
   { key: 'fireflies', name: 'Fireflies', line: 'Find the pairs. How many fireflies?' },
-  { key: 'count', name: 'Counting stars', line: 'Lie back and count the stars' },
+  { key: 'hoops', name: 'Ring toss', line: 'Throw a pebble through the glowing ring' },
   { key: 'shapes', name: 'Star pictures', line: 'Join the stars into a picture' },
   { key: 'sleepy', name: 'Sleepy mushrooms', line: 'Tap them in the order they glow' },
 ];
@@ -21,8 +21,11 @@ function icon(g, k, x, y, s, col) {
     g.beginPath(); g.arc(0, s * 0.12, s * 0.2, 0, Math.PI * 2); g.fill();
     g.beginPath(); g.arc(0, -s * 0.14, s * 0.1, 0, Math.PI * 2); g.fill();
     g.globalAlpha = 0.7; g.beginPath(); g.ellipse(-s * 0.26, -s * 0.12, s * 0.22, s * 0.1, -0.5, 0, Math.PI * 2); g.ellipse(s * 0.26, -s * 0.12, s * 0.22, s * 0.1, 0.5, 0, Math.PI * 2); g.fill();
-  } else if (k === 'count') {
-    g.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? s * 0.16 : s * 0.38, a = i * Math.PI / 5; g.lineTo(Math.sin(a) * r, -Math.cos(a) * r); } g.closePath(); g.fill();
+  } else if (k === 'hoops') {
+    // a ring of light with a pebble flying through it
+    g.lineWidth = s * 0.07; g.beginPath(); g.ellipse(s * 0.06, -s * 0.02, s * 0.3, s * 0.36, 0, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.ellipse(-s * 0.02, s * 0.0, s * 0.08, s * 0.06, -0.3, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = 0.6; g.lineWidth = s * 0.04; g.setLineDash([s * 0.05, s * 0.06]); g.beginPath(); g.moveTo(-s * 0.42, s * 0.3); g.quadraticCurveTo(-s * 0.3, s * 0.02, -s * 0.12, s * 0.0); g.stroke(); g.setLineDash([]);
   } else if (k === 'sleepy') {
     // a little mushroom with closed sleepy eyes
     g.beginPath(); g.ellipse(0, -s * 0.08, s * 0.4, s * 0.24, 0, Math.PI, 0); g.closePath(); g.fill();

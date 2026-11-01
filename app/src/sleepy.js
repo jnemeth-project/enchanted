@@ -3,7 +3,7 @@
 // then you tap them in the same order. Get it right and they all glow happily, and next time one more joins
 // the tune. Get it wrong and nothing bad happens: they simply show you the same tune again. No timer, no score.
 import * as THREE from 'three';
-import { tweens, glowTexture } from './util.js';
+import { tweens, glowTexture, signTexture } from './util.js';
 
 // a soft pentatonic scale, one note per mushroom (low at the front left, rising to the back right)
 const NOTES = [196, 220, 246.94, 293.66, 329.63, 392, 440, 493.88, 587.33, 659.25, 739.99, 783.99];
@@ -21,7 +21,8 @@ export class SleepyMushrooms {
     this.mound = W.byName.G_SleepyMound || null;
     if (this.mound) { this.root.attach(this.mound); this.mound.updateMatrixWorld(true); this.moundSY = this.mound.scale.y; }
     this.list = []; this.active = false; this.seq = []; this.phase = 'idle'; this.t = 0; this.i = 0; this.rounds = 0; this.wrong = 0;
-    this.onFirst = null; this.onRound = null;
+    this.onFirst = null; this.onRound = null; this.onStop = null;
+    this.stopMu = null;   // the extra mushroom at the front in the middle, marked "Stop": touch it to end the game
     this.tools = [];   // things that tap like a fingertip: the drawing stick's glowing tip, used as a drumstick
   }
 
@@ -50,6 +51,37 @@ export class SleepyMushrooms {
     return { g, m, halo, mats, base, cap, r: Math.max(size.x, size.z) * s * 0.5, hz: NOTES[k], glow: 0, bounce: 0, grow: 0, inside: [false, false] };
   }
 
+  // one more mushroom, nearest you in the middle, a soft coral colour with a little "Stop" sign standing on it:
+  // touching it ends the game (always clear how to get out)
+  _makeStop() {
+    const src = this.srcs[0]; if (!src) return null;
+    const g = new THREE.Group(), m = src.clone(true); m.position.set(0, 0, 0); m.rotation.set(0, 0, 0); m.scale.set(1, 1, 1);
+    const mats = [];
+    m.traverse((o) => { if (o.isMesh) { if (o.material && o.material.type === 'ShaderMaterial') { o.visible = false; return; }
+      o.material = o.material.clone(); if (o.material.color) o.material.color.lerp(new THREE.Color(0xff8f7e), 0.75);
+      if (o.material.emissive) o.material.emissive.lerp(new THREE.Color(0xff7a66), 0.75); mats.push(o.material); } });
+    const box = new THREE.Box3().setFromObject(m), size = box.getSize(new THREE.Vector3());
+    const s = HEIGHT * 0.9 / Math.max(size.y, 1e-3); m.scale.setScalar(s); m.position.y = -box.min.y * s; g.add(m);
+    const H = HEIGHT * 0.9;
+    // the sign: a little plaque on a stick, standing up from the cap and leaning back towards you a touch
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.05, 6), new THREE.MeshBasicMaterial({ color: 0x7a5236 }));
+    stick.position.y = H + 0.022; g.add(stick);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.085, 0.0425), new THREE.MeshBasicMaterial({ map: signTexture('Stop'), transparent: true, fog: false, side: THREE.DoubleSide }));
+    sign.position.y = H + 0.06; sign.rotation.x = -0.25; g.add(sign);
+    const x = 0, z = ROWS[0] + 0.15;
+    g.position.set(x, this._groundAt(x, z), z);
+    const base = mats.map((mm) => mm.emissiveIntensity ?? 1);
+    return { g, m, mats, base, sign, cap: new THREE.Vector3(x, g.position.y + H * 0.82, z), signAt: new THREE.Vector3(x, g.position.y + H + 0.06, z), r: Math.max(size.x, size.z) * s * 0.5, inside: [false, false, false, false], glow: 0 };
+  }
+
+  _stopTapped() {
+    if (!this.active || !this.stopMu) return;
+    const st = this.stopMu; st.glow = 1;
+    this.sound.boop(st.cap.clone(), 130);
+    if (this.effects) this.effects.sparkle(st.signAt.clone(), 0xffd2c4, 14, 0.05);
+    if (this.onStop) this.onStop();
+  }
+
   // the mound's height follows where you are playing from, so the caps are at your hands:
   // about 45 cm up sitting on the bed (the forest floor), about 72 cm up beside a chair
   setSeat(seat) { if (this.mound) { this.mound.scale.y = this.moundSY * (seat === 'chair' ? 1.43 : 0.79); this.mound.updateMatrixWorld(true); } }
@@ -67,6 +99,9 @@ export class SleepyMushrooms {
       // they pop up out of the moss one after another
       tweens.add(0.6, (e) => { const b = e < 0.7 ? e / 0.7 * 1.12 : 1.12 - (e - 0.7) / 0.3 * 0.12; mu.g.scale.setScalar(Math.max(0.001, b)); }, { delay: 1.0 + 0.12 * k });
     }
+    const st = this.stopMu = this._makeStop();
+    if (st) { st.g.scale.setScalar(0.001); this.root.add(st.g); this.root.updateMatrixWorld(true);
+      tweens.add(0.6, (e) => { const b = e < 0.7 ? e / 0.7 * 1.12 : 1.12 - (e - 0.7) / 0.3 * 0.12; st.g.scale.setScalar(Math.max(0.001, b)); }, { delay: 1.0 + 0.12 * 12 }); }
     this.seq = [this._pick(), this._pick()];
     this._show(3.6);
   }
@@ -74,6 +109,8 @@ export class SleepyMushrooms {
   stop(now = false) {
     this.active = false; this.phase = 'idle';
     const old = this.list; this.list = [];
+    if (this.stopMu) { const sg = this.stopMu.g; this.stopMu = null;
+      if (now) this.root.remove(sg); else { const s0 = sg.scale.x; tweens.add(0.5, (e) => sg.scale.setScalar(Math.max(0.001, s0 * (1 - e))), { done: () => this.root.remove(sg) }); } }
     old.forEach((mu, k) => {
       if (now) { this.root.remove(mu.g); return; }
       const s0 = mu.g.scale.x;
@@ -126,6 +163,7 @@ export class SleepyMushrooms {
   }
 
   pick(ray) {
+    if (this.active && this.stopMu && ray.distanceToPoint(this.stopMu.signAt) < 0.06) return { key: 'sleepyStop', size: 0.08, point: this.stopMu.signAt.clone(), fire: () => this._stopTapped() };
     if (!this.active || this.phase !== 'input') return null;
     let best = null, bd = 9;
     this.list.forEach((mu, k) => { const d = ray.distanceToPoint(mu.cap); if (d < Math.max(0.05, mu.r * 1.2)) { const a = ray.origin.distanceTo(mu.cap); if (a < bd) { bd = a; best = k; } } });
@@ -135,6 +173,17 @@ export class SleepyMushrooms {
 
   update(dt, input, time) {
     if (!this.list.length) return;
+    // the Stop mushroom: a fingertip (or the drawing stick) on its cap or its sign, at any moment of the game
+    const st = this.stopMu;
+    if (this.active && st && st.g.scale.x > 0.5) {
+      const near = (p) => p && ((Math.abs(p.y - st.cap.y) < 0.09 && Math.hypot(p.x - st.cap.x, p.z - st.cap.z) < Math.max(0.06, st.r * 1.3)) || p.distanceTo(st.signAt) < 0.05);
+      const slots = [];
+      input.hands.forEach((h, hi) => { let hit = false; if (h.present) { for (let t = 1; t < 5; t++) if (h.tips && near(h.tips[t])) hit = true; if (h.pinching && near(h.pinchPoint)) hit = true; } slots[hi] = hit; });
+      this.tools.forEach((tool, ti) => { slots[2 + ti] = !!near(tool()); });
+      let fire = false; slots.forEach((hit, k) => { if (hit && !st.inside[k]) fire = true; st.inside[k] = hit; });
+      if (fire) { this._stopTapped(); if (!this.list.length) return; }
+    }
+    if (st) { st.glow = Math.max(0, st.glow - dt * 1.4); const b = 0.55 + 0.1 * Math.sin(time * 1.3); st.mats.forEach((mm, j) => { if (mm.emissiveIntensity !== undefined) mm.emissiveIntensity = st.base[j] * (b + 2.5 * st.glow); }); }
     // playing the tune: one mushroom wakes every 0.8 s
     if (this.active && this.phase === 'wait') {
       this.t += dt;

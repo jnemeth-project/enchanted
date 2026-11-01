@@ -83,6 +83,17 @@ export class Pebbles {
   // a little help aiming at the pond: a throw roughly toward it is nudged so it lands in the water (a flat,
   // skimming throw keeps its own speed, so it can still skip)
   _aim(pb, v) {
+    // the hoops game: a throw roughly toward the ring is carried right through its middle
+    const T = this.hoops && this.hoops.target;
+    if (T) {
+      const o = pb.o.position, to = T.clone().sub(o); const dy = to.y; to.y = 0; const d = to.length(); to.normalize();
+      const hv = new THREE.Vector3(v.x, 0, v.z), hs = hv.length();
+      if (hs > 0.8 && d > 0.3 && hv.clone().normalize().angleTo(to) < THREE.MathUtils.degToRad(35)) {
+        const sp = THREE.MathUtils.clamp(hs, 2.2, 5.5), t = d / sp;
+        return new THREE.Vector3(to.x * sp, (dy + 0.5 * G * t * t) / t, to.z * sp);
+      }
+      return v;
+    }
     const P = this.pond; if (!P || !P.ok) return v;
     const o = pb.o.position, to = P.centre.clone().sub(o); to.y = 0; const dist = to.length(); to.normalize();
     const hv = new THREE.Vector3(v.x, 0, v.z), hs = hv.length(); if (hs < 1.2) return v;
@@ -117,7 +128,7 @@ export class Pebbles {
       if (pb.state !== 'rest') continue;
       if (ray.distanceToPoint(pb.o.position) < 0.07) return { key: pb, size: 0.06, handsOnly: true, point: pb.o.position.clone(), fire: () => {
         const dir = ray.direction.clone(); dir.y = 0; dir.normalize();
-        this._throw(pb, dir.multiplyScalar(3.2).add(new THREE.Vector3(0, 3, 0)));
+        this._throw(pb, this._aim(pb, dir.multiplyScalar(3.2).add(new THREE.Vector3(0, 3, 0))));
       } };
     }
     return null;
@@ -156,7 +167,9 @@ export class Pebbles {
       } else if (pb.state === 'fly') {
         pb.v.y -= G * dt;
         pb.tt = (pb.tt || 0) + dt; if (pb.tt > 0.012) { pb.tt = 0; this._trail(o.position); }
+        const was = this.hoops && this.hoops.active ? o.position.clone() : null;
         o.position.addScaledVector(pb.v, dt);
+        if (was) this.hoops.check(was, o.position);
         if (this.field) this.field.collide(o.position, pb.v, 0.05, pb);
         o.rotation.x += pb.spin.x * dt; o.rotation.y += pb.spin.y * dt; o.rotation.z += pb.spin.z * dt;
         // the pond: a flat, fast throw skips off the water; anything else drops in with a plop

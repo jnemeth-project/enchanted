@@ -10,7 +10,8 @@ const FONT = '"Iowan Old Style", "Palatino Linotype", Georgia, serif';
 // the floating options panel: rows the player can touch or point at
 // swapping goes round the three games
 const NEXT_GAME = {
-  fireflies: { key: 'count', title: 'Counting stars', sub: 'lie back and enjoy' },
+  fireflies: { key: 'hoops', title: 'Ring toss', sub: 'throw pebbles through the rings' },
+  hoops: { key: 'shapes', title: 'Star pictures', sub: 'lie back and enjoy' },
   count: { key: 'shapes', title: 'Star pictures', sub: 'lie back and enjoy' },
   shapes: { key: 'fireflies', title: 'Firefly memory', sub: 'find the matching colours' },
 };

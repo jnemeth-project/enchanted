@@ -2,13 +2,28 @@
 // cheap materials, glowing additive effects, twinkle/ribbon shaders, the phased moon,
 // and an index of every interactive piece by role.
 import * as THREE from 'three';
+
+import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
+
+// Fast raycasts (three-mesh-bvh, part of IWSDK): the forest floor and moss are big meshes, and a thrown pebble or
+// mushroom asks "where is the ground below me?" every frame. A big mesh gets its search tree the first time
+// anything is cast against it, so throwing stays smooth (it dropped to about 35 fps before).
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = function (raycaster, hits) {
+  const g = this.geometry;
+  if (g && !g.boundsTree && !this.morphTargetInfluences && !this.isSkinnedMesh && g.attributes.position && g.attributes.position.count > 1500) {
+    try { g.computeBoundsTree(); } catch (e) { g.boundsTree = null; }
+  }
+  return acceleratedRaycast.call(this, raycaster, hits);
+};
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { ownMaterials, parseJSON } from './util.js';
 import { moonPhase, moonAngles, directionThree, moonLight } from './moon.js';
 
 // bump this whenever the forest is re-exported, so headsets never keep showing an old saved copy
-export const FOREST_VERSION = 'reach6';
+export const FOREST_VERSION = 'bark3';
 // where your eyes are, set by where you are playing from (chosen on the start screen before you go in):
 //  - bed:   sitting cross-legged on the forest floor, eyes about 0.82 m up (the forest floor is your bed)
 //  - chair: sitting on a mossy stump, eyes about 1.2 m up (the forest floor is your room's floor)
@@ -200,6 +215,8 @@ export async function loadWorld(scene, onProgress) {
   W.dim.Puffballs = { userData: { mats: puffMats } };
 
   for (const n of ['Ground', 'Moss']) if (get(n)) W.grounds.push(get(n));
+  // build the ground's search trees now, so the first throw doesn't stutter
+  for (const g of W.grounds) g.traverse((m) => { if (m.isMesh && !m.geometry.boundsTree && m.geometry.attributes.position.count > 1500) m.geometry.computeBoundsTree(); });
   W.magic = {
     stump: get('G_SeedStump'), target: get('G_WaterTarget'), seed: get('G_MagicSeed'),
     stages: [get('G_MagicSeed'), get('G_MagicMushroom_1_Sprout'), get('G_MagicMushroom_2_Young'), get('G_MagicMushroom_3_Bloom')],

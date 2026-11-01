@@ -22,6 +22,7 @@ import { Choice } from './choice.js';
 import { Menu } from './menu.js';
 import { ThingsMenu } from './thingsmenu.js';
 import { SleepyMushrooms } from './sleepy.js';
+import { Hoops } from './hoops.js';
 import { Pond } from './pond.js';
 import { ShootingStars } from './wishes.js';
 import { Eggs } from './eggs.js';
@@ -56,6 +57,16 @@ if (new URLSearchParams(location.search).has('emulate')) {
   const dev = new XRDevice(metaQuest3); dev.installRuntime({ forceInstall: true }); dev.primaryInputMode = 'hand';
   dev.position.set(0, 0.82, 0);
   window.__xrdev = dev;
+}
+// The headset draws the forest the same proven way as before IWSDK: without the "layers" feature (the projection
+// layer with multiview), which made textures flash in the Quest. IWSDK offers it by default, so it is taken out of
+// the session request here.
+if (navigator.xr && navigator.xr.requestSession && !navigator.xr.__noLayers) {
+  const req = navigator.xr.requestSession.bind(navigator.xr);
+  navigator.xr.requestSession = (mode, init = {}) => req(mode, { ...init,
+    optionalFeatures: (init.optionalFeatures || []).filter((f) => f !== 'layers'),
+    requiredFeatures: (init.requiredFeatures || []).filter((f) => f !== 'layers') });
+  navigator.xr.__noLayers = true;
 }
 const world = await World.create(document.getElementById('scene-container'), {
   xr: { sessionMode: 'immersive-vr', offer: 'none', referenceSpace: 'local-floor', features: { handTracking: true }, restoreCameraOnExit: false },
@@ -121,7 +132,7 @@ let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || 
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
 let potToldRain = false;
-let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails, pond, shooting, eggs;
+let hoops, W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails, pond, shooting, eggs;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
   options.calm = on; setSoftEdges(on); MOTION = on ? 0.4 : 1;
@@ -179,6 +190,10 @@ async function init() {
   touch.tools.push(() => (stick.held ? stick.tip() : null)); jar = new FairyJar(W, scene, sound, effects);
   // the pond: pebbles plop in, or skip across if thrown flat and fast
   pond = new Pond(W, scene); pebbles.pond = pond;
+  // the hoops game: rings of light in front of you to throw pebbles through (never inside a tree)
+  hoops = new Hoops(scene, sound, effects); pebbles.hoops = hoops;
+  hoops.blocked = (x, z) => playfield.trunks.some((t) => Math.hypot(x - t.x, z - t.z) < t.r + 0.6);
+  hoops.onScore = (n) => { if (n === 1) say('Lovely', { hold: 1.6 }); else if (n % 5 === 0) say(`${n} rings`, { width: 0.7, hold: 1.8 }); };
   pebbles.onSkips = (n) => { if (time - (pebbles.skipSaid ?? -99) < 4 || n < 3) return; pebbles.skipSaid = time; say(n >= 4 ? `${n === 4 ? 'Four' : n === 5 ? 'Five' : 'Six'} skips!\nThe frogs can't believe it 🐸` : 'Three skips!\nThe frogs are impressed 🐸', { hold: 3 }); };
   // shooting stars, and a wish if you saw one
   shooting = new ShootingStars(scene);
@@ -225,6 +240,9 @@ async function init() {
   sleepy = new SleepyMushrooms(scene, W, sound, effects);
   sleepy.tools.push(() => (stick && stick.held ? stick.tip() : null));   // drum on the sleepy mushrooms with the stick
   sleepy.onFirst = () => say('Now tap them in the same order', { hold: 3 });
+  // the Stop mushroom and the Stop firefly: touch either and that game ends, back to simply sitting in the forest
+  sleepy.onStop = () => stopGame();
+  flies.onStop = () => { if (phase.mode === 'fireflies') stopGame(); };
   input.addPicker((r) => sleepy.pick(r), { ui: true, handsOnly: true });
   things = new ThingsMenu(scene, W, sound, effects);
   things.onStart = playGame; things.onStop = stopGame;
@@ -489,6 +507,11 @@ function updatePhases(dt) {
       phase.wrapping = true; sleepy.stop(); say('The little mushrooms are asleep', { hold: 2.6 });
       tweens.add(0.1, () => {}, { delay: 3, done: () => { if (phase.name !== 'goodnight') { if (needsWater() && remaining() > 40) startRain(); else goodnight(); } } });
     }
+  } else if (P === 'hoops') {
+    if (remaining() < 80 && !phase.wrapping && !keepPlaying()) {
+      phase.wrapping = true; hoops.stop(); say('The rings drift away', { hold: 2.6 });
+      tweens.add(0.1, () => {}, { delay: 3, done: () => { if (phase.name !== 'goodnight') { if (needsWater() && remaining() > 40) startRain(); else goodnight(); } } });
+    }
   } else if (P === 'sky') {
     if (JUST_SIT && phase.t > 8 && phase.t - (phase.autoStar ?? 0) > 5) { phase.autoStar = phase.t; sky.autoStep(); }
     // near the end: if your mushroom still needs water, the sky closes and the rain comes
@@ -528,6 +551,7 @@ function stopGame() {
   const m = phase.mode; if (!m || phase.name === 'goodnight') return;
   if (m === 'fireflies') { flies.dismiss(); sleep.quiet(1); touch.dimBoops(1); }
   if (m === 'sleepy') sleepy.stop();
+  if (m === 'hoops') hoops.stop();
   if (SKY(m)) { sky.stop(); const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); tweens.add(0.1, () => {}, { delay: 4, done: () => gentleRecenter() }); }
   phase.mode = null; menu.mode = null; things.setMode(null); input.farHands = false;
   phase.name = 'relax'; phase.t = 0; phase.wrapping = false;
@@ -540,6 +564,17 @@ function startMode(mode) {
   phase.mode = mode; phase.t = 0; phase.lastOutAt = 0; phase.shownOnce = false; phase.showing = false; phase.saidFlies = false; phase.wrapping = false;
   menu.mode = mode; if (things) things.setMode(mode);
   if (guide.mode === 'tap') guide.goTo(atEye(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); // stop showing the boop
+  if (mode === 'hoops') {
+    phase.name = 'hoops'; input.farHands = false;
+    state.tutorialDone = true; saveState(state);
+    hoops.start(eyePos());
+    say('Pick up a pebble\nand throw it through the ring', { hold: 4 });
+    // the butterfly waits by the pebbles on your right, to show where they are
+    const pr = pebbles.list.find((pb) => pb.o.userData.on_rock === 'R');
+    if (pr) guide.goTo(pr.home.clone().add(new THREE.Vector3(0.05, 0.16, -0.05)), { orbit: 0.04, speed: 0.8 }); else guide.goTo(atEye(0.4, 0.95, -0.6), { orbit: 0.06, speed: 0.9 });
+    tweens.add(0.1, () => {}, { delay: 9, done: () => { if (phase.mode === 'hoops') guide.goTo(atEye(-0.42, 1.0, -0.7), { orbit: 0.06, speed: 0.9 }); } });
+    return;
+  }
   if (mode === 'sleepy') {
     phase.name = 'sleepy'; input.farHands = false;
     state.tutorialDone = true; saveState(state);
@@ -621,6 +656,7 @@ function swapMode(mode) {
   if (phase.mode === 'fireflies') { phase.wrapping = true; flies.dismiss(); sleep.quiet(1); touch.dimBoops(1); }
   if (phase.name === 'rain') rain.stop();
   if (phase.mode === 'sleepy') sleepy.stop();
+  if (phase.mode === 'hoops') hoops.stop();
   if (SKY(phase.mode) && !SKY(mode)) { sky.stop(); const from = W.canopy.uniform.value; tweens.add(5, (k) => W.canopy.set(from * (1 - k))); }
   startMode(mode);
 }
@@ -779,10 +815,10 @@ if (DEBUG) {
     if (e.key === 'n') { state.wateredNight = null; saveState(state); }
     if (e.key === 's') sleep.order.forEach((gi) => sleep.putToSleep(gi));
     if (e.key === 'f') { choice.hide(); startMode('fireflies'); }
-    if (e.key === 't') { choice.hide(); startMode('count'); }
+    if (e.key === 't') { choice.hide(); startMode('hoops'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
+  window.__lo = () => ({ hoops, startMode, stopGame, world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -847,7 +883,7 @@ function step(dt) {
 
     menu.update(dt, input);
     things.update(dt, input, time, eyeRay());
-    sleepy.update(dt, input, time); dirt.enabled = !sleepy.running; sinkNook(dt);
+    hoops.update(dt, time); sleepy.update(dt, input, time); dirt.enabled = !sleepy.running; sinkNook(dt);
     if (phase.name !== 'goodnight') session.t += dt;
     sky.ownDwell = !gaze.enabled;
     sky.update(dt, time, input, renderer.xr.isPresenting ? 1.8 : renderer.domElement.height / 900);
