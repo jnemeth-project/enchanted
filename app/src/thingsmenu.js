@@ -51,8 +51,8 @@ export class ThingsMenu {
     this.sound = sound; this.effects = effects; this.board = W.byName.G_MenuBoard || null;
     this.open = false; this.k = 0; this.sel = null; this.hot = null; this.mode = null; this.away = 0;
     this.onStart = null; this.onStop = null; this.onOpen = null;
-    this.canvas = document.createElement('canvas'); this.canvas.width = CW; this.canvas.height = CH;
-    this.g = this.canvas.getContext('2d'); this.tex = new THREE.CanvasTexture(this.canvas); this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.canvas = document.createElement('canvas'); this.canvas.width = CW * 0.7; this.canvas.height = CH * 0.7;   // (drawn at 70%: lighter to update)
+    this.g = this.canvas.getContext('2d'); this.g.scale(0.7, 0.7); this.tex = new THREE.CanvasTexture(this.canvas); this.tex.colorSpace = THREE.SRGBColorSpace; this.tex.generateMipmaps = false; this.tex.minFilter = THREE.LinearFilter;
     this.card = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, opacity: 0, depthWrite: false, fog: false }));
     this.card.renderOrder = 30; this.card.visible = false; scene.add(this.card);
     // a soft golden glow around the little board on the shelf, breathing very slowly: a quiet "something is here"
@@ -223,7 +223,8 @@ export class ThingsMenu {
         this.cardIn[i] = key;
       }
     });
-    if (hot !== this.hot) { this.hot = hot; if (this.open) this._draw(); }
+    this.redrawT = Math.max(0, (this.redrawT || 0) - dt);
+    if (hot !== this.hot && this.redrawT <= 0) { this.hot = hot; if (this.open) { this._draw(); this.redrawT = 0.18; } }
     // looking well away from the card for a while folds it away again
     if (this.open && eye && this.eyeDir) {
       const to = this.card.position.clone().sub(eye).normalize();

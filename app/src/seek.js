@@ -60,8 +60,12 @@ export class Seek {
   _spot(eye) {
     const grounds = this.W.grounds;
     const solid = []; this.W.root.traverse((o) => { if (o.isMesh && o.visible && o.material && !o.material.transparent) solid.push(o); });
+    // with your room showing at eye level (mixed reality), it hides on the forest floor nearer you, low enough
+    // to be seen below the room
+    const room = this.roomShown && this.roomShown();
+    const dMax = room ? Math.max(2.4, Math.min(8.5, eye.y / Math.tan(THREE.MathUtils.degToRad(16)))) : 8.5, dMin = Math.min(3, dMax - 0.5);
     for (let tries = 0; tries < 80; tries++) {
-      const a = THREE.MathUtils.degToRad(rand(-110, 110)), d = rand(3, 8.5);
+      const a = THREE.MathUtils.degToRad(rand(-110, 110)), d = rand(dMin, dMax);
       const x = Math.sin(a) * d, z = -Math.cos(a) * d;
       this.ray.set(new THREE.Vector3(x, 6, z), new THREE.Vector3(0, -1, 0)); this.ray.far = 12;
       const h = this.ray.intersectObjects(grounds, true)[0]; if (!h) continue;

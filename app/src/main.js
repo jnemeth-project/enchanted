@@ -24,6 +24,7 @@ import { ThingsMenu } from './thingsmenu.js';
 import { SleepyMushrooms } from './sleepy.js';
 import { Hoops } from './hoops.js';
 import { Seek } from './seek.js';
+import { Passthrough } from './passthrough.js';
 import { WakeField, Waterfall, Fairies, Squirrels, Intro } from './intro.js';
 import { Pond } from './pond.js';
 import { ShootingStars } from './wishes.js';
@@ -70,8 +71,13 @@ if (navigator.xr && navigator.xr.requestSession && !navigator.xr.__noLayers) {
     requiredFeatures: (init.requiredFeatures || []).filter((f) => f !== 'layers') });
   navigator.xr.__noLayers = true;
 }
+// Mixed reality (your room at eye level, see passthrough.js): where the headset offers it (Quest), the forest is
+// always started in the mixed reality mode, so the room can be shown or hidden at any time from Options. With
+// the room hidden it looks exactly as before (the forest draws its own opaque night all round).
+// ?vr forces the plain VR mode instead (for comparing).
+const AR_OK = !params.has('vr') && !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false));
 const world = await World.create(document.getElementById('scene-container'), {
-  xr: { sessionMode: 'immersive-vr', offer: 'none', referenceSpace: 'local-floor', features: { handTracking: true }, restoreCameraOnExit: false },
+  xr: { sessionMode: AR_OK ? 'immersive-ar' : 'immersive-vr', offer: 'none', referenceSpace: 'local-floor', features: { handTracking: true }, restoreCameraOnExit: false },
   render: { fov: 70, near: 0.03, far: 400 },
   input: { canvasPointerEvents: false },
   features: { locomotion: false, grabbing: false, physics: false, sceneUnderstanding: false, environmentRaycast: false, spatialUI: false },
@@ -96,6 +102,8 @@ for (const side of ['left', 'right']) for (const k of ['ray', 'grab', 'touch']) 
 
 const scene = world.scene;
 scene.background = new THREE.Color(0x05040b);
+const passthrough = new Passthrough(scene, 0x05040b);
+{ const r = document.getElementById('row-passthrough'); if (r && AR_OK) r.style.display = ''; }
 scene.fog = new THREE.FogExp2(0x1b2650, 0.02); // a soft blue night haze all round the forest: the trees fade into gentle blue, not black
 const camera = world.camera;
 const rig = world.player;   // IWSDK's player rig (XROrigin): the camera and your hands live in it
@@ -157,8 +165,13 @@ function speak(text) {
     speechSynthesis.speak(u);
   } catch {}
 }
+// Read aloud is only offered where the browser can really speak (the Quest's browser has no voices, so there the
+// option is hidden rather than ticked and silent)
+function canSpeak() { try { return !!(window.speechSynthesis && window.SpeechSynthesisUtterance && speechSynthesis.getVoices().some((v) => /^en/i.test(v.lang))); } catch { return false; } }
+function offerSpeak() { const el = document.getElementById('opt-speak'); const row = el && el.closest('label'); if (row) row.style.display = canSpeak() ? '' : 'none'; if (!canSpeak()) { options.speak = false; if (el) el.checked = false; } }
+try { offerSpeak(); if (window.speechSynthesis) speechSynthesis.addEventListener('voiceschanged', offerSpeak); } catch {}
 function applyAccess() {
-  captions.large = !!options.large; captions.speak = options.speak ? speak : null;
+  captions.large = !!options.large; captions.speak = options.speak && canSpeak() ? speak : null;
   if (guides) guides.on = !!options.guides;
   if (outlines) outlines.set(!!options.outlines);
 }
@@ -242,6 +255,9 @@ async function init() {
   potGroup.visible = false;
   menu.softEdges = !!options.calm;
   menu.onSoftEdges = (on) => { setCalm(on); try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
+  menu.setRoomAvailable(AR_OK); menu.room = !!options.passthrough;
+  menu.onRoom = (on) => { options.passthrough = on; try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {} };
+  seek.roomShown = () => passthrough.on && passthrough.ar;
   guides = new SoundGuides(sound, () => [
     ...touch.items.filter((it) => (it.kind === 'boop' || it.kind === 'dandelion') && !it.away && !it.blown).map((it) => ({ at: it.center, r: it.radius, hz: it.kind === 'boop' ? it.hz * 2 : 440 })),
     ...crystals.list.map((c) => ({ at: c.c, r: c.r, hz: c.hz })),
@@ -330,17 +346,19 @@ function begin() {
 function readOptions() {
   const q = (id) => document.getElementById(id);
   if (q('opt-sit')) { options.sit = q('opt-sit').checked; options.bright = q('opt-bright').checked; options.calm = !!(q('opt-calm') && q('opt-calm').checked);
-    for (const k of ['large', 'speak', 'guides', 'outlines', 'voice']) options[k] = !!(q('opt-' + k) && q('opt-' + k).checked); options.volume = +q('opt-volume').value; }
+    for (const k of ['large', 'speak', 'guides', 'outlines', 'voice', 'passthrough']) options[k] = !!(q('opt-' + k) && q('opt-' + k).checked); options.volume = +q('opt-volume').value; }
   const sel = document.querySelector('#session button.on'); if (sel) options.session = +sel.dataset.min;
   try { localStorage.setItem(OPT_KEY, JSON.stringify(options)); } catch {}
   JUST_SIT = options.sit;
   if (JUST_SIT) TUTORIAL = false;
+  applyAccess();   // (what you ticked or unticked on the start screen applies now: Large text off means no dark backing)
   gaze.enabled = true; // looking always works (the door and the options need a long, deliberate look)
   setCalm(!!options.calm); applyAccess();
+  if (menu) { menu.room = !!options.passthrough; }
   if (flies) flies.big = options.bright;
   if (touch) touch.highlight = options.bright ? 0.35 : 0;
 }
-for (const [id, key] of [['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-calm', 'calm'], ['opt-large', 'large'], ['opt-speak', 'speak'], ['opt-guides', 'guides'], ['opt-outlines', 'outlines'], ['opt-voice', 'voice']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
+for (const [id, key] of [['opt-sit', 'sit'], ['opt-bright', 'bright'], ['opt-calm', 'calm'], ['opt-large', 'large'], ['opt-speak', 'speak'], ['opt-guides', 'guides'], ['opt-outlines', 'outlines'], ['opt-voice', 'voice'], ['opt-passthrough', 'passthrough']]) { const el = document.getElementById(id); if (el) el.checked = options[key]; }
 { const v = document.getElementById('opt-volume'); if (v) v.value = options.volume; }
 // how long tonight's session lasts: 5, 10, 15 or 20 minutes (remembered)
 for (const b of document.querySelectorAll('#session button')) {
@@ -875,7 +893,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('hoops'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ seek, squirrels, errors, intro, wake, fairies, waterfall, hoops, startMode, stopGame, world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
+  window.__lo = () => ({ passthrough, AR_OK, seek, squirrels, errors, intro, wake, fairies, waterfall, hoops, startMode, stopGame, world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -884,6 +902,7 @@ function setPaused(p) { if (p === paused) return; paused = p; if (p) sound.pause
 document.addEventListener('visibilitychange', () => setPaused(document.hidden));
 renderer.xr.addEventListener('sessionstart', () => {
   const s = renderer.xr.getSession();
+  passthrough.setSession(s); s.addEventListener('end', () => passthrough.setSession(null));
   s.addEventListener('visibilitychange', () => {
     setPaused(s.visibilityState !== 'visible');
     // back from the Meta menu (or the headset's own recentre): seat the player again once the head is tracked
@@ -942,6 +961,8 @@ function step(dt) {
     else if (xrCentred > 0 && performance.now() - xrCentred > 2500) { recenter(); xrCentred = -1; }
   }
   desktop.update();
+  // mixed reality: your room at eye level (waits until the first-night welcome is over: the butterfly flies far)
+  passthrough.on = !!options.passthrough; passthrough.hold = !!(intro && intro.running); passthrough.update(dt, EYE);
   input.update(dt);
   guardSystemGesture();
   if (W && phase.name !== 'loading') {

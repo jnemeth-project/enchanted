@@ -328,7 +328,7 @@ export class DirtDrawing {
     pos.needsUpdate = true; geo.computeVertexNormals();
     this.canvas = document.createElement('canvas'); this.canvas.width = 900; this.canvas.height = 600;
     this.g = this.canvas.getContext('2d');
-    this.tex = new THREE.CanvasTexture(this.canvas); this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.tex = new THREE.CanvasTexture(this.canvas); this.tex.colorSpace = THREE.SRGBColorSpace; this.tex.generateMipmaps = false; this.tex.minFilter = THREE.LinearFilter;
     this.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, fog: false }));
     this.mesh.position.set(this.centre.x, 0, this.centre.z); this.mesh.renderOrder = 2;
     scene.add(this.mesh);

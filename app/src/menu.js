@@ -16,15 +16,15 @@ const NEXT_GAME = {
   count: { key: 'shapes', title: 'Star pictures', sub: 'lie back and enjoy' },
   shapes: { key: 'fireflies', title: 'Firefly memory', sub: 'find the matching colours' },
 };
-const ROWS = [
-  { key: 'vol', h: 1 }, { key: 'mute', h: 1 }, { key: 'swap', h: 1 }, { key: 'edges', h: 1 }, { key: 'recenter', h: 1 }, { key: 'close', h: 1 },
-];
+// (Mixed reality is only listed where the headset can show your room: an immersive-ar session)
+const rowsFor = (room) => ['vol', 'mute', 'swap', 'edges', ...(room ? ['room'] : []), 'recenter', 'close'];
 
 export class Menu {
   constructor(scene, W, input, sound) {
     this.scene = scene; this.input = input; this.sound = sound;
     this.onMainMenu = null; this.onSwap = null; this.onVolume = null;
     this.volume = 0.8; this.muted = false; this.mode = null; this.open = false; this.hot = null; this.time = 0;
+    this.roomOK = false; this.room = false; this.rows = rowsFor(false);
     // the door and the sign are modelled in Blender, built into the tree (TreeDoor, G_OptionsSign)
     this.door = W.byName.TreeDoor || null;
     this.sign = W.byName.G_OptionsSign || null;
@@ -40,25 +40,31 @@ export class Menu {
   }
 
   _buildPanel() {
-    this.panelC = document.createElement('canvas'); this.panelC.width = 768; this.panelC.height = 1080;
-    this.panelT = new THREE.CanvasTexture(this.panelC); this.panelT.colorSpace = THREE.SRGBColorSpace;
-    this.panel = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.647), new THREE.MeshBasicMaterial({ map: this.panelT, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
+    // logical size 768 wide, 160 per row; drawn at 2/3 scale (lighter to update)
+    this.H = 120 + this.rows.length * 160;
+    if (this.panel) { this.scene.remove(this.panel); this.panel.geometry.dispose(); this.panel.material.dispose(); this.panelT.dispose(); }
+    this.panelC = document.createElement('canvas'); this.panelC.width = 512; this.panelC.height = Math.round(this.H * 512 / 768);
+    this.panelT = new THREE.CanvasTexture(this.panelC); this.panelT.colorSpace = THREE.SRGBColorSpace; this.panelT.generateMipmaps = false; this.panelT.minFilter = THREE.LinearFilter;
+    this.ph = 0.46 * this.H / 768;
+    this.panel = new THREE.Mesh(new THREE.PlaneGeometry(0.46, this.ph), new THREE.MeshBasicMaterial({ map: this.panelT, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
     this.panel.renderOrder = 40; this.panel.visible = false; this.panel.scale.setScalar(1.4); this.scene.add(this.panel);
     this._drawPanel();
   }
+  // the headset can show your room (mixed reality): one more row on the panel
+  setRoomAvailable(ok) { ok = !!ok; if (ok === this.roomOK) return; this.roomOK = ok; this.rows = rowsFor(ok); if (!this.open) this._buildPanel(); }
 
   _rowAt(uv) { // which row (and which part of the volume row) a point on the panel is
-    const y = (1 - uv.y) * 1080;
+    const y = (1 - uv.y) * this.H;
     if (y < 120) return null;
-    const i = Math.floor((y - 120) / 160); const row = ROWS[i];
-    if (!row) return null;
-    if (row.key === 'vol') return uv.x < 0.3 ? 'vol-' : uv.x > 0.7 ? 'vol+' : null;
-    return row.key;
+    const key = this.rows[Math.floor((y - 120) / 160)];
+    if (!key) return null;
+    if (key === 'vol') return uv.x < 0.3 ? 'vol-' : uv.x > 0.7 ? 'vol+' : null;
+    return key;
   }
 
   _drawPanel() {
-    const g = this.panelC.getContext('2d'), W = 768, H = 1080;
-    g.clearRect(0, 0, W, H);
+    const g = this.panelC.getContext('2d'), W = 768, H = this.H;
+    g.setTransform(512 / 768, 0, 0, 512 / 768, 0, 0); g.clearRect(0, 0, W, H);
     g.fillStyle = 'rgba(14, 12, 28, 0.88)'; g.beginPath(); g.roundRect(8, 8, W - 16, H - 16, 40); g.fill();
     g.strokeStyle = 'rgba(190, 220, 255, 0.5)'; g.lineWidth = 3; g.stroke();
     g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -82,13 +88,15 @@ export class Menu {
       for (let i = 0; i < n; i++) { g.fillStyle = i < lvl ? '#bfe3ff' : 'rgba(255,255,255,0.18)'; g.beginPath(); g.arc(W / 2 - 175 + i * 50, y + 80, 15, 0, Math.PI * 2); g.fill(); }
       g.font = `30px ${FONT}`; g.fillStyle = 'rgba(210, 222, 255, 0.75)'; g.fillText('Volume', W / 2, y + 128);
     }
-    row(1, this.muted ? 'Sound on' : 'Mute', 'mute');
+    const at = (k) => this.rows.indexOf(k);
+    row(at('mute'), this.muted ? 'Sound on' : 'Mute', 'mute');
     // a game running: stop it (back to just sitting in the forest). Otherwise: open the menu of things to do
-    if (this.mode) row(2, 'Stop the game', 'swap', 'back to just relaxing');
-    else row(2, 'Things to do', 'swap', 'the menu on the white tree');
-    row(3, this.softEdges ? 'Calm motion: on' : 'Calm motion: off', 'edges', 'for motion sickness: gentler, softer edges');
-    row(4, 'Re-centre view', 'recenter', 'sets your seated height again');
-    row(5, 'Close', 'close');
+    if (this.mode) row(at('swap'), 'Stop the game', 'swap', 'back to just relaxing');
+    else row(at('swap'), 'Things to do', 'swap', 'the menu on the white tree');
+    row(at('edges'), this.softEdges ? 'Calm motion: on' : 'Calm motion: off', 'edges', 'for motion sickness: gentler, softer edges');
+    if (this.roomOK) row(at('room'), this.room ? 'Your room: showing' : 'Your room: hidden', 'room', 'mixed reality: your room between the trees');
+    row(at('recenter'), 'Re-centre view', 'recenter', 'sets your seated height again');
+    row(at('close'), 'Close', 'close');
     this.panelT.needsUpdate = true;
   }
 
@@ -120,6 +128,7 @@ export class Menu {
     if (key === 'vol-' || key === 'vol+') { this.muted = false; this.volume = Math.max(0, Math.min(1, this.volume + (key === 'vol+' ? 0.125 : -0.125))); }
     if (key === 'mute') this.muted = !this.muted;
     if (key === 'edges') { this.softEdges = !this.softEdges; if (this.onSoftEdges) this.onSoftEdges(this.softEdges); }
+    if (key === 'room') { this.room = !this.room; if (this.onRoom) this.onRoom(this.room); }
     if (key === 'vol-' || key === 'vol+' || key === 'mute') { if (this.onVolume) this.onVolume(this.muted ? 0 : this.volume, this.volume, this.muted); }
     if (key === 'swap') { this.show(false); if (this.mode) { if (this.onStop) this.onStop(); } else if (this.onThings) this.onThings(); return; }
     this._drawPanel();
@@ -151,15 +160,18 @@ export class Menu {
     if (this.open) for (const h of input.hands) {
       if (!h.present) continue;
       const local = this.panel.worldToLocal(h.index.clone());
-      const inside = Math.abs(local.x) < 0.23 && Math.abs(local.y) < 0.3235 && Math.abs(local.z) < 0.02;
+      const inside = Math.abs(local.x) < 0.23 && Math.abs(local.y) < this.ph / 2 && Math.abs(local.z) < 0.02;
       if (inside) {
-        const key = this._rowAt(new THREE.Vector2(local.x / 0.46 + 0.5, local.y / 0.647 + 0.5));
+        const key = this._rowAt(new THREE.Vector2(local.x / 0.46 + 0.5, local.y / this.ph + 0.5));
         if (key && !h._menuIn) this.press(key);
         h._menuIn = !!key;
       } else h._menuIn = false;
     }
     const pk = hot && hot.startsWith('panel:') ? hot.slice(6) : null;
-    if (pk !== this.hot && this.open) { this.hot = pk; this._drawPanel(); }
+    // (redrawn at most a few times a second, and only once the pointer settles: a ray wobbling between rows
+    // must not send a new picture to the headset every frame, which made everything stutter)
+    this.redrawT = Math.max(0, (this.redrawT || 0) - dt);
+    if (pk !== this.hot && this.open && this.redrawT <= 0) { this.hot = pk; this._drawPanel(); this.redrawT = 0.18; }
     const doorHot = hot === 'door' ? 1 : 0, signHot = hot === 'sign' ? 1 : 0;
     this.dh = (this.dh || 0) + (doorHot - (this.dh || 0)) * Math.min(1, dt * 6);
     this.sh = (this.sh || 0) + (signHot - (this.sh || 0)) * Math.min(1, dt * 6);
