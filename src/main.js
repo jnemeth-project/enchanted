@@ -313,6 +313,24 @@ function applySeat() {
   if (crystals && crystals.refresh) crystals.refresh();
 }
 
+// the little rock on the left stands where the sleepy mushrooms' mound rises: it sinks into the moss while that
+// game is on (with its crystal and bubble mushroom) and comes back up afterwards
+let nookSink = 0, nookWas = 0;
+function sinkNook(dt) {
+  const want = sleepy && sleepy.running ? 1 : 0;
+  nookSink += (want - nookSink) * Math.min(1, dt * 1.6);
+  if (Math.abs(nookSink - nookWas) < 1e-4) return;
+  const d = (nookSink - nookWas) * -0.75; nookWas = nookSink;
+  for (const r of W.reachRocks || []) {
+    if (!r.userData.sink_for_sleepy) continue;
+    r.position.y += d;
+    for (const o of [...(W.crystals || []), ...(W.bubbles || [])]) if (o.userData.on_rock === r.userData.side) o.position.y += d;
+  }
+  if (nookSink < 0.002 && want === 0) nookSink = 0;
+  // (measure where everything is again, so nothing can be touched where it no longer is)
+  scene.updateMatrixWorld(true); if (touch && touch.refresh) touch.refresh(); if (crystals && crystals.refresh) crystals.refresh();
+}
+
 ui.vr.addEventListener('click', async () => {
   try {
     const session = await navigator.xr.requestSession('immersive-vr', { requiredFeatures: ['local-floor'], optionalFeatures: ['hand-tracking'] });
@@ -771,7 +789,7 @@ function step(dt) {
 
     menu.update(dt, input);
     things.update(dt, input, time, eyeRay());
-    sleepy.update(dt, input, time); dirt.enabled = !sleepy.running;
+    sleepy.update(dt, input, time); dirt.enabled = !sleepy.running; sinkNook(dt);
     if (phase.name !== 'goodnight') session.t += dt;
     sky.ownDwell = !gaze.enabled;
     sky.update(dt, time, input, renderer.xr.isPresenting ? 1.8 : renderer.domElement.height / 900);
