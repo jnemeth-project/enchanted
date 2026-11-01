@@ -83,6 +83,16 @@ export class Seed {
     if (this.onGrow) this.onGrow(st.stage);
   }
 
+  // A brand-new seed pushes up its first little sprout on its own, so there is something growing from the start
+  // (it does not use up tonight's watering: the rain at the end still makes it grow)
+  sprout() {
+    if (this.state.stage !== 0) return;
+    this.state.stage = 1; saveState(this.state);
+    this.sound.grow(this.target, false);
+    this.effects.sparkle(this.target, 0xcfe4ff, 34, 0.18);
+    this.show(1, true);
+  }
+
   // Picking up the bloom and placing it somewhere.
   update(dt, input) {
     this.time += dt;

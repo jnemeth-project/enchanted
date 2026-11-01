@@ -22,6 +22,7 @@ export class SleepyMushrooms {
     if (this.mound) { this.root.attach(this.mound); this.mound.updateMatrixWorld(true); this.moundSY = this.mound.scale.y; }
     this.list = []; this.active = false; this.seq = []; this.phase = 'idle'; this.t = 0; this.i = 0; this.rounds = 0; this.wrong = 0;
     this.onFirst = null; this.onRound = null;
+    this.tools = [];   // things that tap like a fingertip: the drawing stick's glowing tip, used as a drumstick
   }
 
   _groundAt(x, z) {
@@ -160,6 +161,16 @@ export class SleepyMushrooms {
         if (inside && !mu.inside[hi]) this.tap(k);
         mu.inside[hi] = inside;
       });
+    });
+    // drumming with the stick: its tip taps a cap just like a fingertip does
+    if (this.active && this.phase === 'input') this.tools.forEach((tool, ti) => {
+      const p = tool(), slot = 2 + ti;
+      let best = -1, bd = 9;
+      if (p) this.list.forEach((mu, k) => {
+        const dy = p.y - mu.cap.y; if (dy < -0.06 || dy > 0.08) return;
+        const d = Math.hypot(p.x - mu.cap.x, p.z - mu.cap.z); if (d < Math.max(0.06, mu.r * 1.3) && d < bd) { bd = d; best = k; }
+      });
+      this.list.forEach((mu, k) => { const inside = k === best; if (inside && !mu.inside[slot]) this.tap(k); mu.inside[slot] = inside; });
     });
     // the look of each one: a faint dozing glow that breathes, bright when awake, a little bounce when lit
     this.list.forEach((mu, k) => {

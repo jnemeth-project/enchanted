@@ -91,6 +91,7 @@ const newNight = beginNight(state); saveState(state);
 let TUTORIAL = !options.sit && (params.has('tutorial') || params.has('demo') || !state.tutorialDone);
 if (params.has('tutorial') || params.has('demo')) state.memoryShown = false;
 
+let potToldRain = false;
 let W, sleep, flies, touch, rain, seed, menu, twirls, pebbles, crystals, dirt, mushThrow, potGroup, potShown = false, guides, outlines, playfield, jar, flutter, stick, shelfLights, things, sleepy, airTrails, pond, shooting, eggs;
 // Calm motion (for people who get motion sick): darker soft edges, slower twirls, fewer sparkles, gentler rain, and no sudden jumps
 function setCalm(on) {
@@ -145,7 +146,8 @@ async function init() {
   playfield = new Playfield(W, touch, sound, effects); pebbles.field = mushThrow.field = playfield;
   flutter = { update() {} };   // (no wandering butterflies: the guide is the only butterfly in the forest)
   // the wise tree's shelves: the drawing stick and the fairy light jar
-  stick = new DrawStick(W, sound, dirt); stick.air = airTrails = new AirTrails(scene); jar = new FairyJar(W, scene, sound, effects);
+  stick = new DrawStick(W, sound, dirt); stick.air = airTrails = new AirTrails(scene);
+  touch.tools.push(() => (stick.held ? stick.tip() : null)); jar = new FairyJar(W, scene, sound, effects);
   // the pond: pebbles plop in, or skip across if thrown flat and fast
   pond = new Pond(W, scene); pebbles.pond = pond;
   pebbles.onSkips = (n) => { if (time - (pebbles.skipSaid ?? -99) < 4 || n < 3) return; pebbles.skipSaid = time; say(n >= 4 ? `${n === 4 ? 'Four' : n === 5 ? 'Five' : 'Six'} skips!\nThe frogs can't believe it 🐸` : 'Three skips!\nThe frogs are impressed 🐸', { hold: 3 }); };
@@ -192,6 +194,7 @@ async function init() {
   // the menu of things to do, on the top shelf of the white tree: the only place games are offered
   // the sleepy mushrooms game: little mushrooms on the ground in front of you that hum a tune to copy
   sleepy = new SleepyMushrooms(scene, W, sound, effects);
+  sleepy.tools.push(() => (stick && stick.held ? stick.tip() : null));   // drum on the sleepy mushrooms with the stick
   sleepy.onFirst = () => say('Now tap them in the same order', { hold: 3 });
   input.addPicker((r) => sleepy.pick(r), { ui: true, handsOnly: true });
   things = new ThingsMenu(scene, W, sound, effects);
@@ -244,7 +247,8 @@ function begin() {
   if (options.voice && eggs) eggs.startVoice(sound.ctx);
   phase.name = 'arrival'; phase.t = 0;
   session.t = 0; session.len = (options.session || 10) * 60;
-  // a quiet arrival: no words at first, just the forest
+  // a quiet arrival: no words at first, just the forest. The pot is already beside you, quietly growing.
+  tweens.add(0.1, () => {}, { delay: 8, done: () => showPot(true) });
 }
 
 function readOptions() {
@@ -300,7 +304,7 @@ function applySeat() {
   }
   if (sleepy && sleepy.setSeat) sleepy.setSeat(seat);
   // the mossy rocks within reach: taller beside a chair, with their crystals and bubble mushrooms lifted with them
-  const k = seat === 'chair' ? 2.1 : 1.0;
+  const k = seat === 'chair' ? 2.4 : 1.0;   // (rock tops at about 22 cm on the bed, 53 cm beside a chair)
   for (const r of W.reachRocks || []) {
     const top = r.userData.rock_top || 0.3, side = r.userData.side;
     if (r.userData.sy0 === undefined) r.userData.sy0 = r.scale.y;
@@ -582,11 +586,14 @@ function toMainMenu() {
 }
 
 // the pot grows up out of the moss beside you, with a little sparkle
-function showPot() {
-  if (potShown) return; potShown = true; potGroup.visible = true;
+function showPot(quiet = false) {
+  if (potShown) { if (!quiet && !potToldRain) { potToldRain = true; say('Catch the rain in your cupped hands\nand tip it into the pot\nto grow your magic mushroom', { hold: 5 }); } return; }
+  potShown = true; potGroup.visible = true; potToldRain = !quiet;
   const st = W.magic.stump; if (st) { const s0 = st.scale.clone(); st.scale.setScalar(0.001); tweens.add(1.6, (k) => st.scale.copy(s0).multiplyScalar(Math.max(0.001, 1 - Math.pow(1 - k, 3)))); }
   effects.sparkle(seed.target.clone(), 0xffe2a8, 40, 0.25); sound.grow(seed.target, false);
-  say('A little pot has appeared beside you\nCatch the rain in your cupped hands\nand tip it in to grow a magic mushroom', { hold: 5.5 });
+  if (!quiet) say('A little pot has appeared beside you\nCatch the rain in your cupped hands\nand tip it in to grow a magic mushroom', { hold: 5.5 });
+  // a new seed sends up its first sprout soon after, so something is growing right from the start
+  else if (seed.state.stage === 0) tweens.add(0.1, () => {}, { delay: 4, done: () => seed.sprout() });
 }
 
 function startRain() {

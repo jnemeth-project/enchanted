@@ -9,7 +9,7 @@ const VIVID = [0.9, 0.78, 0.62, 0.52, 0.4, 0.27, 0.11, 0.98];
 export class Touch {
   constructor(W, sound, effects) {
     this.W = W; this.sound = sound; this.effects = effects; this.count = 0; this.onAny = null;
-    this.items = [];
+    this.items = []; this.tools = [];   // tools: the drawing stick's tip, which taps mushrooms like a drumstick
     for (const o of W.boops) this.addBoop(o);
     // Every mushroom you can boop has its own note, low to high from left to right,
     // so sweeping your hand across them plays a calm pentatonic scale.
@@ -33,6 +33,18 @@ export class Touch {
       const s = worldSphere(o, { cap: true, shrink: 0.95 }), mats = [];
       o.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); m.material.userData.e0 = m.material.emissiveIntensity ?? 1; mats.push(m.material); } });
       this.items.push({ kind: 'jelly', o, ...s, spring: new Spring(48, 2.0), lean: new Spring(30, 2.4), flash: 0, inside: [false, false], cool: 0, base: o.scale.clone(), mats, hz: 140 + Math.random() * 60 });
+    }
+    // the bellflower within reach: brush a bell and it swings and rings its own note
+    const BELL_NOTES = [659.25, 739.99, 880, 987.77, 1108.73];
+    (W.reachBells || []).sort((a, b) => a.name.localeCompare(b.name)).forEach((o, i) => {
+      const s = worldSphere(o, { shrink: 1.1 });
+      this.items.push({ kind: 'bell', o, ...s, swing: new Spring(26, 1.6), swing2: new Spring(26, 1.6), inside: [false, false], cool: 0, rot: o.rotation.clone(), hz: BELL_NOTES[i % BELL_NOTES.length] });
+    });
+    // the curl fern within reach: brush up along it and it unrolls, then slowly curls back
+    if (W.reachFern) {
+      const box = new THREE.Box3().setFromObject(W.reachFern), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+      let mesh = null; W.reachFern.traverse((m) => { if (m.isMesh && m.morphTargetInfluences) mesh = m; });
+      this.items.push({ kind: 'frond', o: W.reachFern, mesh, center: c, radius: Math.max(size.x, size.z) * 0.6 + 0.06, box, inside: [false, false], cool: 0, open: 0 });
     }
     for (const o of W.dandelions) {
       const box = new THREE.Box3().setFromObject(o);
@@ -67,6 +79,18 @@ export class Touch {
       this.sound.boop(it.center, it.hz);
       this._recolor(it);
       if (it.toColor) { const top = new THREE.Vector3(it.center.x, it.box ? it.box.max.y : it.center.y, it.center.z); this.effects.sparkle(top, it.toColor.getHex(), 40, 0.2); this.effects.sparkle(top, 0xffffff, 14, 0.1); }
+    } else if (it.kind === 'bell') {
+      const v = hand ? hand.palmVel : new THREE.Vector3(0.6, 0, 0);
+      it.swing.kick(Math.max(-2, Math.min(2, v.z * 2.5)) + 0.6); it.swing2.kick(Math.max(-2, Math.min(2, -v.x * 2.5))); it.cool = 0.25;
+      this.sound.chime(it.center, it.hz);
+      this.effects.sparkle(it.center.clone(), 0xe9dcff, 8, 0.05);
+    } else if (it.kind === 'frond') {
+      if (it.opening) return;
+      it.opening = true; it.cool = 1;
+      this.sound.whoosh(it.center);
+      this.effects.sparkle(new THREE.Vector3(it.center.x, it.box.max.y, it.center.z), 0xc8ffe8, 18, 0.12);
+      // unroll quickly, stay open a moment, then curl back slowly with a little settle at the end
+      tweens.add(0.7, (k) => { it.open = 1 - Math.pow(1 - k, 3); }, { done: () => tweens.add(2.2, (k) => { it.open = 1 - (k * k * (3 - 2 * k)) * (1 + 0.08 * Math.sin(k * Math.PI)); }, { delay: 0.9, done: () => { it.open = 0; it.opening = false; } }) });
     } else if (it.kind === 'jelly') {
       const v = hand ? hand.palmVel : new THREE.Vector3(0, -0.5, 0);
       it.spring.kick(-3.4 - Math.min(2, v.length() * 2)); it.lean.kick((v.x - v.z) * 3); it.flash = 1; it.cool = 0.4;
@@ -103,11 +127,23 @@ export class Touch {
           const r = it.kind === 'dandelion' || it.kind === 'fern' ? it.radius + 0.01 : it.radius * (it.inside[hi] ? 0.95 : 0.7);
           for (let k = 0; k < 5 && !inside; k++) if (h.tips[k].distanceTo(it.center) < r) inside = true;
           if (!inside && it.kind === 'fern' && h.palm.distanceTo(it.center) < r) inside = true;
+          if (!inside && it.kind === 'bell' && h.palm && h.palm.distanceTo(it.center) < r + 0.03) inside = true;   // a brush of the hand
+          if (it.kind === 'frond') {   // only an upward brush along the frond unrolls it
+            const near = h.palm && it.box.distanceToPoint(h.palm) < 0.07;
+            inside = !!near && (h.palmVel ? h.palmVel.y > 0.25 : false);
+          }
           if (!inside && it.kind === 'dandelion' && h.palm.distanceTo(it.center) < 0.22 && h.palmVel.length() > 0.5) inside = true; // a swoosh
           if (inside && !it.inside[hi]) {
             if (it.kind !== 'fern' || h.speed > 0.12) this._fire(it, h);
           }
           it.inside[hi] = inside;
+        });
+        // the drawing stick's tip drums on the mushrooms (boops and bubble mushrooms) like a fingertip
+        if (it.kind === 'boop' || it.kind === 'jelly') this.tools.forEach((tool, ti) => {
+          const p = tool(), slot = 2 + ti;
+          const inside = !!p && p.distanceTo(it.center) < it.radius * (it.inside[slot] ? 0.95 : 0.75);
+          if (inside && !it.inside[slot]) this._fire(it, null);
+          it.inside[slot] = inside;
         });
       }
       if (it.kind === 'dandelion' && it.blown && it.regrow !== undefined) {
@@ -127,6 +163,11 @@ export class Touch {
       } else if (it.kind === 'fern') {
         const ax = it.sx.update(dt), az = it.sz.update(dt);
         it.o.rotation.set(it.rot.x + ax * 0.12, it.rot.y, it.rot.z + az * 0.12);
+      } else if (it.kind === 'bell') {
+        const a = it.swing.update(dt), b = it.swing2.update(dt);
+        it.o.rotation.set(it.rot.x + a * 0.35, it.rot.y, it.rot.z + b * 0.35);
+      } else if (it.kind === 'frond') {
+        if (it.mesh) it.mesh.morphTargetInfluences[0] = it.open;
       } else if (it.kind === 'jelly') {
         // squash and stretch (keeping its volume), with a soft sideways sway: a wobbly, bouncy bubble
         const x = it.spring.update(dt), l = it.lean.update(dt); it.flash *= Math.exp(-dt * 2.2);
