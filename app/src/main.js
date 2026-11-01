@@ -780,7 +780,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ world, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
+  window.__lo = () => ({ world, recenter, EYE, rig, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -866,7 +866,25 @@ function step(dt) {
   // (IWSDK draws the frame after its systems have run)
 }
 
+// ?fps: a small frame-rate readout low in your view (for checking it holds 60+ on the Quest; never shown otherwise)
+const fpsMeter = (() => {
+  if (!params.has('fps')) return null;
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d');
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, fog: false }));
+  spr.scale.set(0.12, 0.03, 1); spr.position.set(0, -0.16, -0.6); spr.renderOrder = 1001; camera.add(spr);
+  let frames = 0, t0 = performance.now(), low = 999;
+  return () => {
+    frames++; const now = performance.now();
+    if (now - t0 < 1000) return;
+    const fps = frames * 1000 / (now - t0); frames = 0; t0 = now; low = Math.min(low, fps);
+    g.clearRect(0, 0, 256, 64); g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, 0, 256, 64);
+    g.fillStyle = fps >= 59 ? '#8ff5d4' : fps >= 45 ? '#ffd88a' : '#ff9a9a'; g.font = '32px sans-serif'; g.textBaseline = 'middle';
+    g.fillText(`${fps.toFixed(0)} fps  (low ${low.toFixed(0)})`, 12, 32); tex.needsUpdate = true;
+  };
+})();
+
 // the whole game, run by IWSDK once a frame
-const GameSystem = class extends createSystem({}) { update() { quietIwsdkInput(); loop(); } };
+const GameSystem = class extends createSystem({}) { update() { quietIwsdkInput(); loop(); if (fpsMeter) fpsMeter(); } };
 
 init();
