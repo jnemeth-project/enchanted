@@ -49,6 +49,14 @@ const ui = {
 // The VR session is only started when you pick "Enter the forest" (never offered by itself), always seated and
 // on the local floor, with hand tracking. IWSDK's own pointers, rays and hand models are switched off: the forest
 // draws its own soft hands and everything is touched directly.
+// ?emulate (testing only): a Meta Quest 3 with tracked hands is emulated in the browser by Meta's IWER,
+// so the headset and hand play can be checked without a headset. Never loaded otherwise.
+if (new URLSearchParams(location.search).has('emulate')) {
+  const { XRDevice, metaQuest3 } = await import('iwer');
+  const dev = new XRDevice(metaQuest3); dev.installRuntime({ forceInstall: true }); dev.primaryInputMode = 'hand';
+  dev.position.set(0, 0.82, 0);
+  window.__xrdev = dev;
+}
 const world = await World.create(document.getElementById('scene-container'), {
   xr: { sessionMode: 'immersive-vr', offer: 'none', referenceSpace: 'local-floor', features: { handTracking: true } },
   render: { fov: 70, near: 0.03, far: 400 },

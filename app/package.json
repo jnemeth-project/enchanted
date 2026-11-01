@@ -16,10 +16,13 @@
   },
   "devDependencies": {
     "@iwsdk/vite-plugin-dev": "1.1.0-rc.2",
-    "vite": "^7.1.4"
+    "vite": "^7.1.4",
+    "iwer": "^2.7.0"
   },
   "overrides": {
     "three": "npm:super-three@0.185.0"
   },
-  "engines": { "node": ">=20.19.0 <21.0.0-0 || >=22.12.0 <23.0.0-0 || >=24.0.0" }
+  "engines": {
+    "node": ">=20.19.0 <21.0.0-0 || >=22.12.0 <23.0.0-0 || >=24.0.0"
+  }
 }
