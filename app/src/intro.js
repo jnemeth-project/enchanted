@@ -151,7 +151,7 @@ export class Fairies {
     let wings = null;
     if (this.wingsModel) { wings = this.wingsModel.clone(true); wings.visible = true; wings.position.set(0, 0, 0); wings.rotation.set(0, 0, 0); wings.scale.setScalar(2.0); wings.traverse((m) => { m.visible = true; }); g.add(wings); }
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: tint.clone().lerp(new THREE.Color(1, 1, 1), 0.4), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-    glow.position.y = 0.07; glow.scale.setScalar(0.36); g.add(glow);
+    glow.position.y = 0.08; glow.scale.setScalar(0.62); g.add(glow);
     this.scene.add(g);
     return { g, body, wings, glow, tint, state: 'home', t: 0, ph: i * 1.7, rest: i % this.rests.length, from: new THREE.Vector3(), mid: new THREE.Vector3(), to: new THREE.Vector3(), dur: 2, hop: rand(15, 35) };
   }
@@ -212,7 +212,7 @@ export class Fairies {
       const look = f.state === 'rest' ? eye : f.state === 'fly' ? f.to : p.clone().add(new THREE.Vector3(-(p.z - this.axis.z), 0, p.x - this.axis.x));
       f.body.lookAt(look.x, p.y + (f.state === 'rest' ? 0 : 0.0), look.z); f.body.rotateY(Math.PI);
       if (f.wings) { f.wings.quaternion.copy(f.body.quaternion); const fast = f.state !== 'rest'; f.wings.scale.set(2.0 * (fast ? 0.45 + 0.55 * Math.abs(Math.sin(time * 28 + f.ph)) : 0.8 + 0.2 * Math.sin(time * 3 + f.ph)), 2.0, 2.0); }
-      f.glow.material.opacity = f.light * (0.75 + 0.15 * Math.sin(time * 2 + f.ph));
+      f.glow.material.opacity = f.light * (0.85 + 0.15 * Math.sin(time * 2 + f.ph));
     }
   }
 }
