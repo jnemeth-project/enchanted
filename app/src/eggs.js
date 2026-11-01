@@ -12,7 +12,7 @@ const v3 = () => new THREE.Vector3();
 
 export class Eggs {
   constructor({ W, guide, sound, effects, say, eye, look, shelfLights, touch, resumeGuide }) {
-    Object.assign(this, { W, guide, sound, effects, say, eye, look, shelfLights, touch, resumeGuide });
+    Object.assign(this, { W, guide, sound, effects, say, eye, look, shelfLights, touch, resumeGuide, busy: null });
     this.t = 0;
     this.pokes = []; this.inBfly = [false, false]; this.enoughAt = -99; this.awakeAt = -99;
     this.tree = W.byName.WiseTree || W.byName.G_WiseTree;
@@ -25,7 +25,7 @@ export class Eggs {
 
   // ------------------------------------------------------------ the butterfly
   _bfly(input) {
-    const g = this.guide; if (!g.group.visible) return;
+    const g = this.guide; if (!g.group.visible || (this.busy && this.busy())) return;   // (not while it is busy showing you something)
     const calm = ['hover', 'perch', 'rest', 'twirl'].includes(g.mode); if (!calm) return;
     input.hands.forEach((h, i) => {
       let inside = false;

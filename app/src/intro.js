@@ -245,7 +245,7 @@ export class Intro {
     const f = c.fairies, giant = f && f.window ? f.window.clone() : new THREE.Vector3(-4.9, 1.45, -8.9);
     const P = (x, y, z) => new THREE.Vector3(x, y, z);
     this.hops = [
-      { at: P(0.25, 0.55, -1.1), R: 3.2 },
+      { at: P(0.35, 0.6, -1.7), R: 3.4 },
       { at: P(1.6, 0.9, -4.6), R: 6.5 },
       { at: P(5.3, 0.6, -3.2), R: 6.5 },
       { at: P(-3.4, 0.8, -2.6), R: 7 },
@@ -279,15 +279,17 @@ export class Intro {
     if (h.fairies && c.fairies && c.fairies.bell) {
       // to the doorbell: it lands beside it and rings it
       const bell = c.fairies.bell;
-      c.guide.tap(bell.clone().add(new THREE.Vector3(0, -0.03, 0)), () => {
+      const ring = this.bellTap = () => {
         if (this.rang) return; this.rang = true;
         c.sound.doorbell(bell.clone());
         if (c.fairies.bellObj) { const o = c.fairies.bellObj, r0 = o.rotation.z; tweens.add(1.6, (k) => { o.rotation.z = r0 + Math.sin(k * Math.PI * 5) * 0.25 * (1 - k); }); }
         this._wakeAt(h, 0.6);
         c.fairies.wake(() => this._finish());
         tweens.add(0.1, () => {}, { delay: 2.2, done: () => c.guide.goTo(c.atEye(-0.3, 0.95, -0.75), { orbit: 0.05, speed: 1.6 }) });
-      });
-      this.state = 'bell';
+      };
+      this.bellAt = bell.clone().add(new THREE.Vector3(0, -0.03, 0));
+      c.guide.tap(this.bellAt, ring);
+      this.state = 'bell'; this.t = 0;
       return;
     }
     c.guide.goTo(h.at.clone().add(new THREE.Vector3(0, 0.25, 0)), { speed: 2.4 });
@@ -322,6 +324,14 @@ export class Intro {
     const c = this.c; this.t += dt;
     // nothing touched for a long while: the butterfly comes anyway (nobody waits in the dark)
     if (this.state === 'asleep' && this.t > 45) this.touched(null);
+    // keep the butterfly on its errand: if anything else moved it, send it on again; and never wait forever
+    if (this.state === 'fly' && this.hop) {
+      const goal = this.hop.at.clone().add(new THREE.Vector3(0, 0.25, 0));
+      if (c.guide.mode !== 'twirl' && (c.guide.mode !== 'hover' || c.guide.target.distanceTo(goal) > 0.05)) c.guide.goTo(goal, { speed: 2.4 });
+      if (this.t > 14) c.guide.pos.lerp(goal, 0.2);
+    }
+    if (this.state === 'bell' && !this.rang && c.guide.mode !== 'tap' && c.guide.mode !== 'twirl' && this.bellAt) c.guide.tap(this.bellAt, this.bellTap);
+    if (this.state === 'bell' && !this.rang && this.t > 20 && this.bellTap) this.bellTap();
     if (this.state === 'fly' && this.hop && c.guide.pos.distanceTo(this.hop.at.clone().add(new THREE.Vector3(0, 0.25, 0))) < 0.25) {
       // it lands on the cluster, and the light spreads out from there
       const h = this.hop; this.hop = null; this.state = 'land';

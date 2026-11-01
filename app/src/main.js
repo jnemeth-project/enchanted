@@ -223,6 +223,7 @@ async function init() {
   eggs = new Eggs({ W, guide, sound, effects, say, touch, shelfLights,
     eye: eyePos, look: () => eyeRay().direction.clone(),
     resumeGuide: () => { if (phase.name === 'relax' && !phase.mode) restGuide(); else guide.goTo(atEye(-0.3, 0.95, -0.75), { speed: 0.9 }); } });
+  eggs.busy = () => intro && intro.running;   // during the intro the butterfly keeps to its errand (a poke doesn't send it off course)
   if (options.voice) eggs.startVoice(sound.ctx);
   // a little surprise for anyone who tries to throw the jar away
   jar.onThrow = (at) => {
