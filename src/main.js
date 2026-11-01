@@ -310,7 +310,8 @@ function applySeat() {
     if (r.userData.sy0 === undefined) r.userData.sy0 = r.scale.y;
     const lift = top * (k - 1) - (r.userData.lift || 0); r.userData.lift = top * (k - 1);
     r.scale.y = r.userData.sy0 * k;
-    for (const o of [...(W.crystals || []), ...(W.bubbles || [])]) if (o.userData.on_rock === side) o.position.y += lift;
+    for (const o of [...(W.crystals || []), ...(W.bubbles || []), ...(W.pebbles || [])]) if (o.userData.on_rock === side) o.position.y += lift;
+    if (pebbles) for (const p of pebbles.list) if (p.o.userData.on_rock === side) p.home.y += lift;   // where it goes back to rest
   }
   scene.updateMatrixWorld(true);
   if (touch && touch.refresh) touch.refresh();
@@ -329,10 +330,27 @@ function sinkNook(dt) {
     if (!r.userData.sink_for_sleepy) continue;
     r.position.y += d;
     for (const o of [...(W.crystals || []), ...(W.bubbles || [])]) if (o.userData.on_rock === r.userData.side) o.position.y += d;
+    if (pebbles) for (const p of pebbles.list) if (p.o.userData.on_rock === r.userData.side) { p.home.y += d; if (p.state === 'rest') p.o.position.y += d; }
   }
   if (nookSink < 0.002 && want === 0) nookSink = 0;
   // (measure where everything is again, so nothing can be touched where it no longer is)
   scene.updateMatrixWorld(true); if (touch && touch.refresh) touch.refresh(); if (crystals && crystals.refresh) crystals.refresh();
+}
+
+// Looking at the pebbles on the white tree's shelf (to your left) for a moment shows, once a night, a quiet note that
+// there are pebbles on your right too, by the pond: no turning from left to right to throw (easier on motion sickness)
+let noteLook = 0, noteShown = false;
+function pebbleNote(dt) {
+  if (noteShown || !pebbles || phase.name === 'loading') return;
+  const shelf = pebbles.list.filter((p) => !p.o.userData.on_rock);
+  if (!shelf.length) return;
+  const c = shelf.reduce((a, p) => a.add(p.home), new THREE.Vector3()).multiplyScalar(1 / shelf.length);
+  const ray = eyeRay(); const near = ray.distanceToPoint(c) < 0.16 && ray.origin.distanceTo(c) < 1.6;
+  noteLook = near ? noteLook + dt : Math.max(0, noteLook - dt * 2);
+  if (noteLook > 1.2) {
+    noteShown = true;
+    say('If turning makes you feel queasy,\nthere are pebbles on your right too,\nnext to the pond', { hold: 5, at: c.clone().lerp(eyePos(), 0.35).add(new THREE.Vector3(0, 0.2, 0)), width: 0.9 });   // just above the shelf, a little towards you
+  }
 }
 
 ui.vr.addEventListener('click', async () => {
@@ -791,7 +809,7 @@ function step(dt) {
     if (potShown) seed.update(dt, input);
     sleep.update(dt);
     choice.update(dt, time, input);
-    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); pond.update(time, rain ? rain.level : 0); eggs.update(dt, input);
+    twirls.update(dt, input); guides.update(dt, input); pebbles.update(dt, input); pebbleNote(dt); mushThrow.update(dt, input); playfield.update(dt); flutter.update(dt, time); stick.update(dt, input); airTrails.update(dt); pond.update(time, rain ? rain.level : 0); eggs.update(dt, input);
     shooting.skyOpen = phase.mode === 'count' || phase.mode === 'shapes'; shooting.update(dt, eyePos(), eyeRay().direction); jar.update(dt, input, time); shelfLights.update(time); crystals.update(dt, input); dirt.update(dt, input);
 
     menu.update(dt, input);
