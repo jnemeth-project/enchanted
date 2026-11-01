@@ -67,11 +67,19 @@ const renderer = world.renderer;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.xr.setFoveation(0.4); // a light touch at the very edges of the lenses (hardly visible) keeps the frame rate smooth; "Calm motion" softens them more
 renderer.domElement.style.display = 'block';
-for (const side of ['left', 'right']) {
-  try { world.input.visualAdapters.hand[side].toggleVisual(false); } catch (e) {}
-  try { world.input.visualAdapters.controller[side].toggleVisual(false); } catch (e) {}
-  for (const k of ['ray', 'grab', 'touch']) try { world.input.multiPointers[side].toggleSubPointer(k, false); } catch (e) {}
+// (checked every frame: IWSDK builds its hand and controller models when a hand first appears)
+function quietIwsdkInput() {
+  const va = world.input && world.input.visualAdapters; if (!va) return;
+  for (const side of ['left', 'right']) {
+    for (const a of [va.hand && va.hand[side], va.controller && va.controller[side]]) {
+      if (!a) continue;
+      if (a.visualsEnabled) a.toggleVisual(false);
+      if (a.visual && a.visual.model && a.visual.model.visible) { a.visual.toggle(false); a.visual.model.visible = false; }
+    }
+  }
 }
+quietIwsdkInput();
+for (const side of ['left', 'right']) for (const k of ['ray', 'grab', 'touch']) try { world.input.multiPointers[side].toggleSubPointer(k, false); } catch (e) {}
 
 const scene = world.scene;
 scene.background = new THREE.Color(0x05040b);
@@ -772,7 +780,7 @@ if (DEBUG) {
     if (e.key === 't') { choice.hide(); startMode('count'); }
     if (e.key === 'y') { choice.hide(); startMode('shapes'); }
   });
-  window.__lo = () => ({ pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
+  window.__lo = () => ({ world, pond, shooting, eggs, airTrails, W, sleep, flies, touch, rain, seed, guide, gaze, phase, state, renderer, scene, camera, options, desktop, sky, choice, input, captions, menu, session, twirls, pebbles, crystals, dirt, mushThrow, potGroup, playfield, flutter, stick, jar, things, sleepy });
 }
 
 // Taking the headset off (or hiding the tab) pauses everything, sound included; putting it back resumes.
@@ -859,6 +867,6 @@ function step(dt) {
 }
 
 // the whole game, run by IWSDK once a frame
-const GameSystem = class extends createSystem({}) { update() { loop(); } };
+const GameSystem = class extends createSystem({}) { update() { quietIwsdkInput(); loop(); } };
 
 init();
