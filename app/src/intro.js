@@ -128,7 +128,8 @@ export class Fairies {
     // a warm glow in front of the window when it is lit, so you can see the light come on from where you sit
     if (this.window) {
       this.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffc070, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-      this.halo.position.copy(this.window); this.halo.scale.setScalar(1.1); scene.add(this.halo);
+      const toYou = new THREE.Vector3(-this.window.x, 0, -this.window.z).normalize();   // a little out from the stem, so the stem never hides it
+      this.halo.position.copy(this.window).addScaledVector(toYou, 0.55); this.halo.scale.setScalar(1.3); scene.add(this.halo);
     }
     // the giant's stem: the fairies twirl round it
     this.axis = this.window ? new THREE.Vector3(this.window.x, 0, this.window.z) : null;
@@ -158,7 +159,7 @@ export class Fairies {
   // a later night: the fairies are already out, resting on their flowers, and their window is lit
   settle() {
     if (!this.ok) return;
-    this.home = true; for (const m of this.glass) m.emissiveIntensity = 1.4; if (this.halo) this.halo.material.opacity = 0.45;
+    this.home = true; for (const m of this.glass) m.emissiveIntensity = 1.4; if (this.halo) this.halo.material.opacity = 0.75;
     this.list.forEach((f) => { f.state = 'rest'; f.g.visible = true; f.g.position.copy(this.rests[f.rest]); f.light = 1; });
   }
 
@@ -166,7 +167,7 @@ export class Fairies {
   wake(onSettled) {
     if (!this.ok) { if (onSettled) onSettled(); return; }
     this.home = true;
-    tweens.add(1.4, (k) => { for (const m of this.glass) m.emissiveIntensity = 1.4 * k * k; if (this.halo) this.halo.material.opacity = 0.45 * k * k; }, { delay: 0.8 });
+    tweens.add(1.4, (k) => { for (const m of this.glass) m.emissiveIntensity = 1.4 * k * k; if (this.halo) this.halo.material.opacity = 0.75 * k * k; }, { delay: 0.8 });
     this.list.forEach((f, i) => {
       tweens.add(0.1, () => {}, { delay: 2.2 + i * 0.7, done: () => {
         f.state = 'twirl'; f.t = 0; f.g.visible = true; f.g.position.copy(this.window); f.light = 0;
