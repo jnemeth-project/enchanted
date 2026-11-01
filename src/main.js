@@ -1,4 +1,4 @@
-// Lights Out: a seated, hands-first wind-down in a glowing night forest.
+// Enchanted: a seated, hands-first wind-down in a glowing night forest.
 // Each night you choose (the butterfly and a few words show you how, the first time):
 //   Fireflies  - a memory game that grows a level each night, then water your mushroom in the rain.
 //   Stargazing - the trees part overhead under a sky full of stars: count the stars home, or join them into pictures.

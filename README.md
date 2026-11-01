@@ -1,8 +1,8 @@
-# Lights Out
+# Enchanted
 
 **A quiet night in a glowing forest. Sit down, put your hands out, and tuck the forest in to sleep.**
 
-Lights Out is a seated, hands-only VR wind-down for Meta Quest and Meta VR Glasses. Each night takes about ten minutes, needs no instructions, and ends with the forest asleep around you.
+Enchanted is a seated, hands-only VR wind-down for Meta Quest and Meta VR Glasses. Each night takes about ten minutes, needs no instructions, and ends with the forest asleep around you.
 
 **▶ Play it:** open **https://jnemeth-project.github.io/lights-out/** in the Meta Quest browser and tap **Enter the forest**.
 
